@@ -1,23 +1,21 @@
 #include <TinyGPS++.h>
-#include <LiquidCrystal.h>
+#include <Wire.h> // Required for I2C communication
+#include <LiquidCrystal_I2C.h>
 
 // --- GPS Configuration (Using Hardware Serial Pins 0 & 1) ---
-// NOTE: When using Hardware Serial (pins 0 & 1), you cannot use the standard Serial Monitor 
-// while the GPS is connected, as they share the same physical connection path.
 static const uint32_t GPSBaud = 9600; 
-
-// The TinyGPS++ object will use the Serial object (Hardware Serial)
 TinyGPSPlus gps;
 
-// --- LCD Configuration (HD44780 in 4-bit Mode) ---
-// Initialize the library with the numbers of the interface pins
-// (RS, E, D4, D5, D6, D7)
-LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+// --- I2C LCD Configuration ---
+// IMPORTANT: Check your I2C address. Common values are 0x27 or 0x3F.
+// Change the address below if your screen does not initialize correctly.
+LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
 void setup()
 {
-  // Initialize the LCD: 16 columns and 2 rows
-  lcd.begin(16, 2);
+  // Initialize the LCD
+  lcd.init();
+  lcd.backlight();
   lcd.print("GPS Initializing...");
 
   // Start Hardware Serial for GPS communication
@@ -46,7 +44,7 @@ void loop()
   }
 }
 
-// Function to display the parsed GPS data on the LCD
+// Function to display the parsed GPS data on the I2C LCD
 void displayInfo()
 {
   // --- Line 1: Location (Lat/Lon) ---
