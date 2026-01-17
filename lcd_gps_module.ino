@@ -1,36 +1,60 @@
 #include <TinyGPS++.h>
-#include <Wire.h> // Required for I2C communication
+#include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
 
-// --- GPS Configuration (Using Hardware Serial Pins 0 & 1) ---
+// --- GPS Configuration ---
 static const uint32_t GPSBaud = 9600; 
+
+// Define Software Serial pins: RX Pin 2, TX Pin 3
+// GPS TX connects to Arduino RX (Pin 2)
+SoftwareSerial ss(2, 3); // RX, TX
+
 TinyGPSPlus gps;
 
 // --- I2C LCD Configuration ---
-// IMPORTANT: Check your I2C address. Common values are 0x27 or 0x3F.
-// Change the address below if your screen does not initialize correctly.
+// IMPORTANT: Check your I2C address (0x27 or 0x3F)
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
+
+unsigned long lastDisplayUpdate = 0;
+const unsigned long DISPLAY_UPDATE_INTERVAL = 500; // Update display every 500ms
 
 void setup()
 {
   // Initialize the LCD
   lcd.init();
   lcd.backlight();
-  lcd.print("GPS Initializing...");
+  lcd.setCursor(0, 0);
+  lcd.print("GPS Debug Mode");
+  lcd.setCursor(0, 1);
+  lcd.print("Initializing...");
 
-  // Start Hardware Serial for GPS communication
-  // Set the baud rate to match your GPS module (usually 9600)
-  Serial.begin(GPSBaud); 
+  // Start Serial Monitor for debugging GPS output
+  Serial.begin(9600); 
+  Serial.println("\n--- Starting GPS Debug Monitor ---");
+  Serial.println("Waiting for GPS data on Pin 2...");
+  
+  // Start Software Serial for GPS communication
+  ss.begin(GPSBaud); 
+  
+  delay(1000);
 }
 
 void loop()
 {
-  // Process incoming GPS data from the Hardware Serial buffer
-  while (Serial.available() > 0) {
-    if (gps.encode(Serial.read())) {
-      // A valid sentence was processed, update the display
-      displayInfo();
+  // Process incoming GPS data from the Software Serial buffer (ss)
+  while (ss.available() > 0) {
+    char c = ss.read();
+    if (gps.encode(c)) {
+      // A valid sentence was processed
+      Serial.print(".");
     }
+  }
+
+  // Update the display every 500ms to reduce flicker
+  if (millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
+    displayInfo();
+    lastDisplayUpdate = millis();
   }
 
   // Safety check: If we haven't received any data after 10 seconds, something is wrong.
@@ -39,7 +63,8 @@ void loop()
     lcd.setCursor(0, 0);
     lcd.print("GPS ERROR!");
     lcd.setCursor(0, 1);
-    lcd.print("Check Wiring");
+    lcd.print("Check Wires/Baud");
+    Serial.println("\n!!! GPS Data stream failed. Check wiring and baud rate. !!!");
     while(true); // Halt the program
   }
 }
@@ -49,27 +74,30 @@ void displayInfo()
 {
   // --- Line 1: Location (Lat/Lon) ---
   lcd.setCursor(0, 0);
+  lcd.print("                "); // Clear the line
+  lcd.setCursor(0, 0);
   
   if (gps.location.isValid()) {
-    // Display Latitude (4 decimal places)
     lcd.print(gps.location.lat(), 4);
     lcd.print(" ");
-    // Display Longitude (3 decimal places)
     lcd.print(gps.location.lng(), 3);
+    Serial.print("Lat: ");
+    Serial.print(gps.location.lat(), 4);
+    Serial.print(" Lon: ");
+    Serial.println(gps.location.lng(), 4);
   } else {
     lcd.print("LOC: Waiting...");
   }
 
   // --- Line 2: Satellites and Altitude ---
   lcd.setCursor(0, 1);
+  lcd.print("                "); // Clear the line
+  lcd.setCursor(0, 1);
   
-  // Satellites
   lcd.print("S:");
   lcd.print(gps.satellites.value());
-  lcd.print(" ");
-
-  // Altitude (in meters, integer value)
-  lcd.print("A:");
+  lcd.print(" A:");
+  
   if (gps.altitude.isValid()) {
     lcd.print(gps.altitude.meters(), 0); 
   } else {
