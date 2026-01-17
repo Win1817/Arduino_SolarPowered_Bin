@@ -1,7 +1,6 @@
-#include <SoftwareSerial.h>
-
-// GPS connected to pins 4 and 5 (as per your current setup)
-SoftwareSerial ss(4, 5); // RX, TX
+// GPS Hardware Serial Test
+// This code uses the built-in Serial pins 0 (RX) and 1 (TX)
+// This is MORE RELIABLE than SoftwareSerial
 
 unsigned long charCount = 0;
 unsigned long lastPrintTime = 0;
@@ -13,27 +12,33 @@ void setup()
   delay(2000);
   
   Serial.println("\n========================================");
-  Serial.println("  GPS RAW NMEA SENTENCE VIEWER");
+  Serial.println("  GPS HARDWARE SERIAL TEST (Pins 0 & 1)");
   Serial.println("========================================");
   Serial.println("Displaying raw sentences from GPS...");
-  Serial.println("Connected to SoftwareSerial pins 4 (RX), 5 (TX)");
-  Serial.println("Testing baud rate: 9600\n");
+  Serial.println("GPS TX connected to Arduino Pin 0 (RX)");
+  Serial.println("GPS RX connected to Arduino Pin 1 (TX)");
+  Serial.println("Baud rate: 9600");
+  Serial.println("\nIMPORTANT: You must DISCONNECT GPS TX/RX");
+  Serial.println("BEFORE uploading this code!");
+  Serial.println("After upload completes, RECONNECT the wires.");
+  Serial.println("========================================\n");
+  Serial.println("Waiting for GPS data...\n");
   
-  ss.begin(9600);
+  // Hardware Serial is already initialized at 9600 baud
 }
 
 void loop()
 {
-  // Read and display raw NMEA sentences
-  while (ss.available() > 0) {
-    char c = ss.read();
+  // Read and display raw NMEA sentences from Hardware Serial
+  while (Serial.available() > 0) {
+    char c = Serial.read();
     Serial.write(c);  // Print exactly what GPS sends
     charCount++;
   }
   
   // Every 10 seconds, print a status line
   if (millis() - lastPrintTime >= 10000) {
-    Serial.println("\n[STATUS] Characters received so far: ");
+    Serial.println("\n[STATUS] Total characters received: ");
     Serial.println(charCount);
     Serial.println("[Waiting for NMEA sentences starting with $GPRMC, $GPGGA, etc...]\n");
     lastPrintTime = millis();
