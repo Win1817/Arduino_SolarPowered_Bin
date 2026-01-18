@@ -1,46 +1,80 @@
-// GPS Hardware Serial Test
-// This code uses the built-in Serial pins 0 (RX) and 1 (TX)
-// This is MORE RELIABLE than SoftwareSerial
+#include <SoftwareSerial.h>
+#include <TinyGPSPlus.h>
 
-unsigned long charCount = 0;
-unsigned long lastPrintTime = 0;
+// GPS module pins
+#define GPS_RX_PIN  4   // Connect to GPS TX
+#define GPS_TX_PIN  3   // Connect to GPS RX
 
-void setup()
-{
-  Serial.begin(9600);
-  
-  delay(2000);
-  
-  Serial.println("\n========================================");
-  Serial.println("  GPS HARDWARE SERIAL TEST (Pins 0 & 1)");
-  Serial.println("========================================");
-  Serial.println("Displaying raw sentences from GPS...");
-  Serial.println("GPS TX connected to Arduino Pin 0 (RX)");
-  Serial.println("GPS RX connected to Arduino Pin 1 (TX)");
-  Serial.println("Baud rate: 9600");
-  Serial.println("\nIMPORTANT: You must DISCONNECT GPS TX/RX");
-  Serial.println("BEFORE uploading this code!");
-  Serial.println("After upload completes, RECONNECT the wires.");
-  Serial.println("========================================\n");
-  Serial.println("Waiting for GPS data...\n");
-  
-  // Hardware Serial is already initialized at 9600 baud
+// Create SoftwareSerial object
+SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);  // RX, TX
+
+// Create TinyGPS++ object
+TinyGPSPlus gps;
+
+void setup() {
+  Serial.begin(9600);         // For Serial Monitor
+  gpsSerial.begin(9600);      // NEO-6M default baud rate is 9600
+
+  Serial.println(F("NEO-6M GPS Module - TinyGPS++ Test"));
+  Serial.println(F("Waiting for GPS fix... (may take 1-5 minutes outdoors)"));
+  Serial.println(F("Make sure antenna has clear sky view!"));
 }
 
-void loop()
-{
-  // Read and display raw NMEA sentences from Hardware Serial
-  while (Serial.available() > 0) {
-    char c = Serial.read();
-    Serial.write(c);  // Print exactly what GPS sends
-    charCount++;
+void loop() {
+  // Feed data from GPS to TinyGPS++
+  while (gpsSerial.available() > 0) {
+    if (gps.encode(gpsSerial.read())) {
+      // New valid sentence received - display data
+      displayGPSInfo();
+    }
   }
-  
-  // Every 10 seconds, print a status line
-  if (millis() - lastPrintTime >= 10000) {
-    Serial.println("\n[STATUS] Total characters received: ");
-    Serial.println(charCount);
-    Serial.println("[Waiting for NMEA sentences starting with $GPRMC, $GPGGA, etc...]\n");
-    lastPrintTime = millis();
+}
+
+void displayGPSInfo() {
+  Serial.println(F("----------------------------------------"));
+
+  if (gps.location.isValid()) {
+    Serial.print(F("Location: "));
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(F(", "));
+    Serial.println(gps.location.lng(), 6);
+
+    Serial.print(F("Altitude: "));
+    Serial.print(gps.altitude.meters());
+    Serial.println(F(" meters"));
+
+    Serial.print(F("Speed: "));
+    Serial.print(gps.speed.kmph());
+    Serial.println(F(" km/h"));
+  } else {
+    Serial.println(F("Location: INVALID"));
   }
+
+  if (gps.date.isValid()) {
+    Serial.print(F("Date: "));
+    Serial.print(gps.date.day());
+    Serial.print(F("/"));
+    Serial.print(gps.date.month());
+    Serial.print(F("/"));
+    Serial.println(gps.date.year());
+  }
+
+  if (gps.time.isValid()) {
+    Serial.print(F("Time (UTC): "));
+    if (gps.time.hour() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.hour());
+    Serial.print(F(":"));
+    if (gps.time.minute() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.minute());
+    Serial.print(F(":"));
+    if (gps.time.second() < 10) Serial.print(F("0"));
+    Serial.println(gps.time.second());
+  }
+
+  Serial.print(F("Satellites: "));
+  Serial.println(gps.satellites.value());
+
+  Serial.print(F("HDOP (Accuracy): "));
+  Serial.println(gps.hdop.hdop());
+  Serial.println();
 }
