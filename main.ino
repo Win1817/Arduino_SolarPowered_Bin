@@ -4,6 +4,9 @@
 #include <SoftwareSerial.h>
 #include <BH1750.h>
 #include <Servo.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include <HX711.h>
 
 /* ===================== GPS ===================== */
 static const uint32_t GPSBaud = 9600;
@@ -22,20 +25,44 @@ unsigned long lastLuxRead = 0;
 const unsigned long LUX_INTERVAL = 1000;
 bool ambientLEDOn = false;
 
-/* ===================== ULTRASONIC ===================== */
-// Human detection sensors
-const int trigBio = 4;
-const int echoBio = 5;
-const int trigNonBio = 6;
-const int echoNonBio = 7;
+/* ===================== RFID (MFRC522) ===================== */
+#define RST_PIN 5
+#define SS_PIN 53
+MFRC522 mfrc522(SS_PIN, RST_PIN);
 
+// Authorized RFID UIDs (add your card UIDs here)
+String authorizedUIDs[] = {
+  "AA BB CC DD",  // Example UID 1
+  "11 22 33 44"   // Example UID 2
+};
+const int numAuthorizedUIDs = 2;
+
+/* ===================== WEIGHT SENSORS (HX711) ===================== */
+// Biodegradable bin weight sensor
+#define BIO_DOUT_PIN 4
+#define BIO_SCK_PIN 6
+HX711 scaleBio;
+float bioWeight = 0;
+const float BIO_WEIGHT_THRESHOLD = 5000.0; // grams (5 kg)
+
+// Non-Biodegradable bin weight sensor
+#define NONBIO_DOUT_PIN 7
+#define NONBIO_SCK_PIN A4
+HX711 scaleNonBio;
+float nonBioWeight = 0;
+const float NONBIO_WEIGHT_THRESHOLD = 5000.0; // grams (5 kg)
+
+// Calibration factors (adjust these based on your load cell)
+const float BIO_CALIBRATION_FACTOR = -7050.0;
+const float NONBIO_CALIBRATION_FACTOR = -7050.0;
+
+/* ===================== ULTRASONIC ===================== */
 // Bin full detection sensors
 const int trigBioFull = A0;
 const int echoBioFull = A1;
 const int trigNonBioFull = A2;
 const int echoNonBioFull = A3;
 
-const long HUMAN_DETECT_THRESHOLD = 50; // cm
 const long MAX_VALID_DISTANCE = 300;    // cm
 const long FULL_THRESHOLD = 100;        // cm for full detection
 const int DIST_SAMPLES = 7;
@@ -43,22 +70,17 @@ const int DIST_SAMPLES = 7;
 /* ===================== RELAY ===================== */
 const int relayLED = 8;
 
-/* ===================== SERVOS ===================== */
+/* ===================== SERVOS (LOCK MECHANISM) ===================== */
 const int servoBioPin = 11;
 const int servoNonBioPin = 12;
 Servo servoBio;
 Servo servoNonBio;
 
-const unsigned long SERVO_OPEN_TIME = 1000;   // ms to fully open
-const unsigned long SERVO_CLOSE_TIME = 1000;  // ms to fully close
-const unsigned long SERVO_CLOSE_DELAY = 3000; // ms after human leaves
+const int SERVO_LOCKED = 0;    // Locked position
+const int SERVO_UNLOCKED = 90; // Unlocked position
 
-bool bioServoOpen = false;
-bool nonBioServoOpen = false;
-unsigned long bioServoTimer = 0;
-unsigned long nonBioServoTimer = 0;
-bool bioStopWritten = true;
-bool nonBioStopWritten = true;
+bool bioLocked = false;
+bool nonBioLocked = false;
 
 /* ===================== STABLE FULL DETECTION ===================== */
 bool bioFull = false;
@@ -70,26 +92,43 @@ long nonBioFullBuffer[FULL_BUFFER_SIZE] = {MAX_VALID_DISTANCE+1};
 int bioIndex = 0, nonBioIndex = 0;
 
 /* ===================== SMS ===================== */
-const char phoneNumber[] = "+639567669410"; // manually include carrier number
+const char phoneNumber[] = "+639567669410";
 bool bioSMSSent = false;
 bool nonBioSMSSent = false;
-SoftwareSerial sim800(7, 8); // RX, TX (change pins if needed)
+SoftwareSerial sim800(9, 10); // RX, TX
 
 /* ===================== SETUP ===================== */
 void setup() {
   Serial.begin(9600);
   ss.begin(GPSBaud);
   Wire.begin();
+  SPI.begin();
 
   // LCD
   lcd1.init(); lcd1.backlight();
   lcd2.init(); lcd2.backlight();
-  lcd1.print("Biodegradable"); lcd1.setCursor(0,1); lcd1.print("Dist: ---");
-  lcd2.print("Non-Biodegradable"); lcd2.setCursor(0,1); lcd2.print("Dist: ---");
+  lcd1.print("Biodegradable");
+  lcd2.print("Non-Biodegrad.");
+  delay(1000);
+  lcd1.setCursor(0,1); lcd1.print("Initializing...");
+  lcd2.setCursor(0,1); lcd2.print("Initializing...");
 
-  // Ultrasonic pins
-  pinMode(trigBio, OUTPUT); pinMode(echoBio, INPUT);
-  pinMode(trigNonBio, OUTPUT); pinMode(echoNonBio, INPUT);
+  // RFID
+  mfrc522.PCD_Init();
+  Serial.println("RFID Ready");
+
+  // Weight sensors
+  scaleBio.begin(BIO_DOUT_PIN, BIO_SCK_PIN);
+  scaleBio.set_scale(BIO_CALIBRATION_FACTOR);
+  scaleBio.tare(); // Reset to zero
+  
+  scaleNonBio.begin(NONBIO_DOUT_PIN, NONBIO_SCK_PIN);
+  scaleNonBio.set_scale(NONBIO_CALIBRATION_FACTOR);
+  scaleNonBio.tare(); // Reset to zero
+  
+  Serial.println("Weight sensors calibrated");
+
+  // Ultrasonic pins (only full detection sensors)
   pinMode(trigBioFull, OUTPUT); pinMode(echoBioFull, INPUT);
   pinMode(trigNonBioFull, OUTPUT); pinMode(echoNonBioFull, INPUT);
 
@@ -97,9 +136,13 @@ void setup() {
   pinMode(relayLED, OUTPUT);
   digitalWrite(relayLED, HIGH);
 
-  // Servos
-  servoBio.attach(servoBioPin); servoBio.write(90);      
-  servoNonBio.attach(servoNonBioPin); servoNonBio.write(90); 
+  // Servos - Start UNLOCKED
+  servoBio.attach(servoBioPin);
+  servoBio.write(SERVO_UNLOCKED);
+  servoNonBio.attach(servoNonBioPin);
+  servoNonBio.write(SERVO_UNLOCKED);
+  
+  Serial.println("Servos UNLOCKED");
 
   // Light sensor
   lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
@@ -107,9 +150,56 @@ void setup() {
   // SIM800A setup
   sim800.begin(9600);
   delay(1000);
-  sim800.println("AT"); delay(100); sim800.println("AT+CMGF=1"); delay(100); // SMS text mode
+  sim800.println("AT"); delay(100);
+  sim800.println("AT+CMGF=1"); delay(100); // SMS text mode
 
+  lcd1.setCursor(0,1); lcd1.print("Ready - OPEN   ");
+  lcd2.setCursor(0,1); lcd2.print("Ready - OPEN   ");
+  
   Serial.println("SYSTEM READY");
+}
+
+/* ===================== RFID USER LOGGING ===================== */
+void checkRFID() {
+  if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  // Read UID
+  String cardUID = "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    cardUID += String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    cardUID += String(mfrc522.uid.uidByte[i], HEX);
+  }
+  cardUID.trim();
+  cardUID.toUpperCase();
+
+  Serial.print("Card UID: ");
+  Serial.println(cardUID);
+
+  // Check if authorized (for logging purposes)
+  bool authorized = false;
+  for (int i = 0; i < numAuthorizedUIDs; i++) {
+    if (cardUID == authorizedUIDs[i]) {
+      authorized = true;
+      break;
+    }
+  }
+
+  if (authorized) {
+    Serial.println("AUTHORIZED USER - Access logged");
+    lcd1.setCursor(0,1); lcd1.print("User logged    ");
+    lcd2.setCursor(0,1); lcd2.print("User logged    ");
+    delay(1000);
+  } else {
+    Serial.println("UNKNOWN USER - Access logged");
+    lcd1.setCursor(0,1); lcd1.print("Unknown user   ");
+    lcd2.setCursor(0,1); lcd2.print("Unknown user   ");
+    delay(1000);
+  }
+
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
 }
 
 /* ===================== LIGHT SENSOR ===================== */
@@ -118,6 +208,19 @@ void updateAmbientLight() {
     lastLuxRead = millis();
     currentLux = lightMeter.readLightLevel();
     ambientLEDOn = (currentLux < LUX_THRESHOLD);
+  }
+}
+
+/* ===================== WEIGHT READING ===================== */
+void updateWeights() {
+  if (scaleBio.is_ready()) {
+    bioWeight = scaleBio.get_units(5); // Average of 5 readings
+    if (bioWeight < 0) bioWeight = 0; // Prevent negative weights
+  }
+  
+  if (scaleNonBio.is_ready()) {
+    nonBioWeight = scaleNonBio.get_units(5); // Average of 5 readings
+    if (nonBioWeight < 0) nonBioWeight = 0; // Prevent negative weights
   }
 }
 
@@ -132,10 +235,14 @@ long readDistanceStable(int trigPin, int echoPin) {
     readings[i] = (dur > 0) ? dur * 0.034 / 2 : MAX_VALID_DISTANCE + 1;
     delay(5);
   }
-  // median
+  // median sort
   for (int i = 0; i < DIST_SAMPLES - 1; i++)
     for (int j = i + 1; j < DIST_SAMPLES; j++)
-      if (readings[i] > readings[j]) { long t = readings[i]; readings[i] = readings[j]; readings[j] = t; }
+      if (readings[i] > readings[j]) {
+        long t = readings[i];
+        readings[i] = readings[j];
+        readings[j] = t;
+      }
   return readings[DIST_SAMPLES/2];
 }
 
@@ -158,7 +265,8 @@ void sendSMS(const char* number, const char* message) {
   delay(100);
   sim800.write(26); // Ctrl+Z to send
   delay(500);
-  Serial.print("SMS SENT: "); Serial.println(message);
+  Serial.print("SMS SENT: ");
+  Serial.println(message);
 }
 
 /* ===================== LOOP ===================== */
@@ -168,12 +276,14 @@ void loop() {
   // GPS
   while (ss.available()) gps.encode(ss.read());
 
+  // RFID check (for user logging only)
+  checkRFID();
+
   // Light sensor
   updateAmbientLight();
 
-  // Human detection distances
-  long dBio = readDistanceStable(trigBio, echoBio);
-  long dNonBio = readDistanceStable(trigNonBio, echoNonBio);
+  // Weight sensors
+  updateWeights();
 
   // Bin full raw distances
   long dBioFullRaw = readDistanceStable(trigBioFull, echoBioFull);
@@ -183,67 +293,52 @@ void loop() {
   long dBioFullAvg = getStableDistance(bioFullBuffer, FULL_BUFFER_SIZE, bioIndex, dBioFullRaw);
   long dNonBioFullAvg = getStableDistance(nonBioFullBuffer, FULL_BUFFER_SIZE, nonBioIndex, dNonBioFullRaw);
 
-  // Set full status if average below threshold
-  bool prevBioFull = bioFull;
-  bool prevNonBioFull = nonBioFull;
+  // Set full status (using both distance and weight)
+  bioFull = (dBioFullAvg <= FULL_THRESHOLD) || (bioWeight >= BIO_WEIGHT_THRESHOLD);
+  nonBioFull = (dNonBioFullAvg <= FULL_THRESHOLD) || (nonBioWeight >= NONBIO_WEIGHT_THRESHOLD);
 
-  bioFull = (dBioFullAvg <= FULL_THRESHOLD);
-  nonBioFull = (dNonBioFullAvg <= FULL_THRESHOLD);
+  // ----------- LOCK CONTROL BASED ON FULL STATUS ---------
+  // Biodegradable bin
+  if (bioFull && !bioLocked) {
+    servoBio.write(SERVO_LOCKED);
+    bioLocked = true;
+    Serial.println("BIO BIN LOCKED - FULL");
+  } else if (!bioFull && bioLocked) {
+    servoBio.write(SERVO_UNLOCKED);
+    bioLocked = false;
+    Serial.println("BIO BIN UNLOCKED - Not full");
+  }
+
+  // Non-Biodegradable bin
+  if (nonBioFull && !nonBioLocked) {
+    servoNonBio.write(SERVO_LOCKED);
+    nonBioLocked = true;
+    Serial.println("NON-BIO BIN LOCKED - FULL");
+  } else if (!nonBioFull && nonBioLocked) {
+    servoNonBio.write(SERVO_UNLOCKED);
+    nonBioLocked = false;
+    Serial.println("NON-BIO BIN UNLOCKED - Not full");
+  }
 
   // ----------- SEND SMS WHEN FULL ---------
-  if(bioFull && !bioSMSSent){
-    sendSMS(phoneNumber, "Biodegradable bin is FULL!");
+  if (bioFull && !bioSMSSent) {
+    String msg = "Biodegradable bin FULL! Weight: ";
+    msg += String(bioWeight, 1);
+    msg += "g";
+    sendSMS(phoneNumber, msg.c_str());
     bioSMSSent = true;
-  } else if(!bioFull) {
+  } else if (!bioFull) {
     bioSMSSent = false; // reset when emptied
   }
 
-  if(nonBioFull && !nonBioSMSSent){
-    sendSMS(phoneNumber, "Non-Biodegradable bin is FULL!");
+  if (nonBioFull && !nonBioSMSSent) {
+    String msg = "Non-Biodegradable bin FULL! Weight: ";
+    msg += String(nonBioWeight, 1);
+    msg += "g";
+    sendSMS(phoneNumber, msg.c_str());
     nonBioSMSSent = true;
-  } else if(!nonBioFull) {
+  } else if (!nonBioFull) {
     nonBioSMSSent = false; // reset when emptied
-  }
-
-  bool bioHumanPresent = (dBio <= HUMAN_DETECT_THRESHOLD);
-  bool nonBioHumanPresent = (dNonBio <= HUMAN_DETECT_THRESHOLD);
-
-  // --------- BIO SERVO ---------
-  if (bioHumanPresent && !bioServoOpen) {
-    servoBio.write(0);          
-    delay(SERVO_OPEN_TIME);
-    servoBio.write(90);         
-    bioServoOpen = true;
-    bioServoTimer = now;
-    bioStopWritten = true;      
-    Serial.println("BIO SERVO OPEN");
-  } 
-  else if (!bioHumanPresent && bioServoOpen && now - bioServoTimer > SERVO_CLOSE_DELAY) {
-    servoBio.write(180);        
-    delay(SERVO_CLOSE_TIME);
-    servoBio.write(90);         
-    bioServoOpen = false;
-    bioStopWritten = true;
-    Serial.println("BIO SERVO CLOSED");
-  }
-
-  // --------- NON-BIO SERVO ---------
-  if (nonBioHumanPresent && !nonBioServoOpen) {
-    servoNonBio.write(0);       
-    delay(SERVO_OPEN_TIME);
-    servoNonBio.write(90);      
-    nonBioServoOpen = true;
-    nonBioServoTimer = now;
-    nonBioStopWritten = true;
-    Serial.println("NON-BIO SERVO OPEN");
-  } 
-  else if (!nonBioHumanPresent && nonBioServoOpen && now - nonBioServoTimer > SERVO_CLOSE_DELAY) {
-    servoNonBio.write(180);     
-    delay(SERVO_CLOSE_TIME);
-    servoNonBio.write(90);      
-    nonBioServoOpen = false;
-    nonBioStopWritten = true;
-    Serial.println("NON-BIO SERVO CLOSED");
   }
 
   // Ambient LED
@@ -251,27 +346,38 @@ void loop() {
 
   // LCD update
   static unsigned long lastDisplayUpdate = 0;
-  if(now - lastDisplayUpdate >= 500){
-    lcd1.setCursor(0,1);
-    lcd1.print("Dist: "); 
-    if(dBio<MAX_VALID_DISTANCE) lcd1.print(dBio); else lcd1.print("---"); 
-    lcd1.print("cm ");
-    if(bioFull) lcd1.print("FULL"); else lcd1.print("     ");
+  if (now - lastDisplayUpdate >= 500) {
+    // LCD1 - Biodegradable
+    lcd1.setCursor(0, 1);
+    if (bioLocked) {
+      lcd1.print("LOCKED ");
+    } else {
+      lcd1.print("OPEN   ");
+    }
+    lcd1.print(String(bioWeight, 0) + "g");
+    lcd1.print(bioFull ? " FULL" : "     ");
 
-    lcd2.setCursor(0,1);
-    lcd2.print("Dist: "); 
-    if(dNonBio<MAX_VALID_DISTANCE) lcd2.print(dNonBio); else lcd2.print("---"); 
-    lcd2.print("cm ");
-    if(nonBioFull) lcd2.print("FULL"); else lcd2.print("     ");
+    // LCD2 - Non-Biodegradable
+    lcd2.setCursor(0, 1);
+    if (nonBioLocked) {
+      lcd2.print("LOCKED ");
+    } else {
+      lcd2.print("OPEN   ");
+    }
+    lcd2.print(String(nonBioWeight, 0) + "g");
+    lcd2.print(nonBioFull ? " FULL" : "     ");
 
     lastDisplayUpdate = now;
   }
 
-  // Debug
-  Serial.print("dBio: "); Serial.print(dBio); 
-  Serial.print(" | dNonBio: "); Serial.print(dNonBio);
-  Serial.print(" | dBioFullAvg: "); Serial.print(dBioFullAvg);
-  Serial.print(" | dNonBioFullAvg: "); Serial.println(dNonBioFullAvg);
+  // Debug output
+  Serial.print("BioWeight: "); Serial.print(bioWeight, 1);
+  Serial.print("g | NonBioWeight: "); Serial.print(nonBioWeight, 1);
+  Serial.print("g | BioDist: "); Serial.print(dBioFullAvg);
+  Serial.print("cm | NonBioDist: "); Serial.print(dNonBioFullAvg);
+  Serial.print("cm | BioLocked: "); Serial.print(bioLocked);
+  Serial.print(" | NonBioLocked: "); Serial.print(nonBioLocked);
+  Serial.print(" | Lux: "); Serial.println(currentLux);
 
-  delay(100); 
+  delay(100);
 }
