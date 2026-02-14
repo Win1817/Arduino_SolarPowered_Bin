@@ -1,788 +1,1067 @@
-# Smart Bin System - Complete Pin Assignments & Assembly Guide
+# Smart Waste Bin System - Arduino Uno Edition
+
+## Complete Assembly Guide & Documentation
+
+---
 
 ## Table of Contents
-1. [Pin Assignments](#pin-assignments)
-2. [Component Wiring Instructions](#component-wiring-instructions)
-3. [System Configuration](#system-configuration)
-4. [Testing & Calibration](#testing--calibration)
-5. [Troubleshooting](#troubleshooting)
+1. [System Overview](#system-overview)
+2. [Component List](#component-list)
+3. [Pin Assignments](#pin-assignments)
+4. [Wiring Instructions](#wiring-instructions)
+5. [Power System](#power-system)
+6. [Software Setup](#software-setup)
+7. [Calibration & Testing](#calibration--testing)
+8. [System Operation](#system-operation)
+9. [Troubleshooting](#troubleshooting)
+
+---
+
+## System Overview
+
+### Features
+✅ **Automatic Smart Lock System**
+- Bins unlocked by default
+- Auto-locks when bin reaches full threshold
+- Auto-unlocks when bin is emptied
+
+✅ **Dual RFID User Tracking**
+- Separate RFID reader for each bin
+- Tracks user access per bin type
+- Authorized user verification
+- Audio feedback (buzzer)
+
+✅ **Ultrasonic Level Detection**
+- Real-time bin fill monitoring
+- Stable readings with moving average
+- Customizable full threshold
+
+✅ **SMS Alerts**
+- Automatic notification when bins are full
+- GPS location included in alerts
+- Sent to designated phone number
+
+✅ **Ambient LED Control**
+- Automatic LED strip activation in darkness
+- Light sensor threshold: 50 lux
+- Relay-controlled LED strip
+
+✅ **Real-time LCD Display**
+- Separate display for each bin
+- Shows: Lock status, distance, full indicator
+- User feedback messages
+
+✅ **GPS Tracking**
+- Location data for bin management
+- Included in SMS alerts
+
+---
+
+## Component List
+
+### Required Components
+
+| Qty | Component | Specification | Purpose |
+|-----|-----------|---------------|---------|
+| 1 | Arduino Uno | Rev3 or compatible | Main controller |
+| 2 | Ultrasonic Sensor | HC-SR04 | Bin level detection |
+| 2 | LCD Display | 16x2 I2C (0x27, 0x25) | Status display |
+| 2 | Servo Motor | SG90 or MG90S | Lock mechanism |
+| 2 | RFID Module | MFRC522 (13.56MHz) | User identification |
+| 2 | RFID Tags/Cards | 13.56MHz compatible | User access cards |
+| 1 | Light Sensor | BH1750 | Ambient light detection |
+| 1 | GPS Module | NEO-6M or compatible | Location tracking |
+| 1 | GSM Module | SIM800A | SMS notifications |
+| 1 | Buzzer | Active or Passive | Audio feedback |
+| 1 | Relay Module | 5V, Single Channel | LED control |
+| 1 | LED Strip | 12V (optional) | Ambient lighting |
+| 1 | Battery | 12V rechargeable | Main power source |
+| 1 | BMS | 12V Battery Management | Battery protection |
+| 1 | Buck Converter | 12V to 5V, 3A+ | Arduino/module power |
+| 1 | Breadboard | Full size | Prototyping |
+| - | Jumper Wires | Male-Male, Male-Female | Connections |
 
 ---
 
 ## Pin Assignments
 
-### Arduino Mega 2560 Pin Configuration
+### Arduino Uno Pin Configuration
 
-### Digital Pins
-
-| Pin | Component | Function | Notes |
-|-----|-----------|----------|-------|
-| 2 | GPS Module | RX | SoftwareSerial |
-| 3 | GPS Module | TX | SoftwareSerial |
-| 4 | Weight Sensor Bio | DOUT | HX711 Data |
-| 5 | RFID | RST | MFRC522 Reset |
-| 6 | Weight Sensor Bio | SCK | HX711 Clock |
-| 7 | Weight Sensor Non-Bio | DOUT | HX711 Data |
-| 8 | Relay Module | LED Control | Ambient lighting |
-| 9 | SIM800A | RX | SoftwareSerial |
-| 10 | SIM800A | TX | SoftwareSerial |
-| 11 | Servo Bio | Control | Lock mechanism |
-| 12 | Servo Non-Bio | Control | Lock mechanism |
-
-### SPI Pins (RFID MFRC522)
+#### Digital Pins
 
 | Pin | Component | Function | Notes |
 |-----|-----------|----------|-------|
-| 50 | RFID | MISO | SPI Hardware |
-| 51 | RFID | MOSI | SPI Hardware |
-| 52 | RFID | SCK | SPI Hardware |
-| 53 | RFID | SS/SDA | Chip Select |
+| 0 | GPS Module | RX | Hardware Serial (conflicts with USB) |
+| 1 | GPS Module | TX | Hardware Serial (conflicts with USB) |
+| 2 | Buzzer | Audio Output | Active or Passive buzzer |
+| 3 | Relay Module | LED Control | PWM capable (not required) |
+| 4 | SIM800A | RX | SoftwareSerial |
+| 5 | SIM800A | TX | SoftwareSerial |
+| 6 | Servo Bio | Control | PWM for smooth movement |
+| 7 | Servo Non-Bio | Control | Standard digital pin |
+| 8 | RFID Bio | SS/SDA | Chip Select |
+| 9 | RFID Shared | RST | Reset for both RFID modules |
+| 10 | RFID Non-Bio | SS/SDA | Chip Select |
+| 11 | RFID (Both) | MOSI | SPI Hardware |
+| 12 | RFID (Both) | MISO | SPI Hardware |
+| 13 | RFID (Both) | SCK | SPI Hardware |
 
-### Analog Pins
+#### Analog Pins
 
 | Pin | Component | Function | Notes |
 |-----|-----------|----------|-------|
-| A0 | Ultrasonic Bio | TRIG | Bin level detection |
-| A1 | Ultrasonic Bio | ECHO | Bin level detection |
-| A2 | Ultrasonic Non-Bio | TRIG | Bin level detection |
-| A3 | Ultrasonic Non-Bio | ECHO | Bin level detection |
-| A4 | Weight Sensor Non-Bio | SCK | HX711 Clock |
+| A0 | Ultrasonic Bio | TRIG | Level detection trigger |
+| A1 | Ultrasonic Bio | ECHO | Level detection echo |
+| A2 | Ultrasonic Non-Bio | TRIG | Level detection trigger |
+| A3 | Ultrasonic Non-Bio | ECHO | Level detection echo |
+| A4 | I2C | SDA | LCD1, LCD2, BH1750 |
+| A5 | I2C | SCL | LCD1, LCD2, BH1750 |
 
-### I2C Pins (Default SDA/SCL)
+### I2C Device Addresses
 
-| Pin | Component | Function | I2C Address | Notes |
-|-----|-----------|----------|-------------|-------|
-| 20 (SDA) | LCD1 | Data | 0x27 | Biodegradable display |
-| 21 (SCL) | LCD1 | Clock | 0x27 | Biodegradable display |
-| 20 (SDA) | LCD2 | Data | 0x25 | Non-Biodegradable display |
-| 21 (SCL) | LCD2 | Clock | 0x25 | Non-Biodegradable display |
-| 20 (SDA) | BH1750 | Data | 0x23 (default) | Light sensor |
-| 21 (SCL) | BH1750 | Clock | 0x23 (default) | Light sensor |
-
-### Power Connections
-
-| Component | VCC | GND | Notes |
-|-----------|-----|-----|-------|
-| GPS Module | 5V | GND | |
-| RFID MFRC522 | 3.3V | GND | **Important: Use 3.3V** |
-| LCD1 (0x27) | 5V | GND | |
-| LCD2 (0x25) | 5V | GND | |
-| BH1750 | 5V or 3.3V | GND | |
-| Ultrasonic Sensors | 5V | GND | All 4 sensors |
-| Weight Sensors (HX711) | 5V | GND | Both Bio and Non-Bio |
-| Servos | 5V (separate) | GND | Use external power if needed |
-| Relay Module | 5V | GND | |
-| SIM800A | 3.7-4.2V | GND | **Use separate power supply** |
-
-## Component Specifications
-
-### 1. GPS Module (NEO-6M or similar)
-- **Baud Rate:** 9600
-- **Communication:** UART via SoftwareSerial
-- **Purpose:** Location tracking for bin management
-
-### 2. RFID Reader (MFRC522)
-- **Protocol:** SPI
-- **Frequency:** 13.56 MHz
-- **Purpose:** User authentication for bin access
-- **Voltage:** 3.3V (Important!)
-
-### 3. Weight Sensors (HX711 Load Cells)
-- **Type:** 2x HX711 modules with load cells
-- **Calibration Factor:** -7050.0 (adjust based on your load cell)
-- **Threshold:** 5000g (5kg) for "FULL" status
-- **Purpose:** Measure waste weight
-
-### 4. Ultrasonic Sensors (HC-SR04 or similar)
-- **Quantity:** 2 (one per bin)
-- **Range:** 2cm - 400cm
-- **Purpose:** Bin level detection
-- **Full Threshold:** 100cm
-
-### 5. LCD Displays (16x2 I2C)
-- **Quantity:** 2
-- **Addresses:** 0x27 (Bio), 0x25 (Non-Bio)
-- **Purpose:** Real-time status display
-
-### 6. Light Sensor (BH1750)
-- **I2C Address:** 0x23 (default)
-- **Threshold:** 50 lux
-- **Purpose:** Ambient light control for LED
-
-### 7. Servos (SG90 or MG90S)
-- **Quantity:** 2
-- **Lock Position:** 0°
-- **Unlock Position:** 90°
-- **Purpose:** Lock/unlock mechanism
-
-### 8. SIM800A GSM Module
-- **Baud Rate:** 9600
-- **Power:** 3.7-4.2V (use separate LiPo battery or 5V-4V converter)
-- **Purpose:** SMS alerts when bins are full
-
-### 9. Relay Module
-- **Control Pin:** Pin 8
-- **Logic:** Active LOW
-- **Purpose:** Ambient LED control
-
-## System Features
-
-1. **Smart Lock System (AUTOMATIC)**
-   - Bins are **UNLOCKED by default**
-   - Locks **ONLY trigger when bin is FULL**
-   - Auto-unlocks when bin is emptied
-   - No RFID required for access
-
-2. **RFID User Logging**
-   - Optional RFID scan for user tracking
-   - Logs authorized and unknown users
-   - Does NOT control bin access
-   - Useful for waste accountability
-
-3. **Dual Monitoring System**
-   - Weight-based detection (HX711 load cells)
-   - Distance-based detection (Ultrasonic sensors)
-   - Bin marked "FULL" if **EITHER** threshold exceeded:
-     - Weight ≥ 5000g (5kg) **OR**
-     - Distance ≤ 100cm
-
-4. **SMS Alerts**
-   - Automatic SMS when bin is full
-   - Includes weight information
-   - Sent to: +639567669410
-
-5. **Ambient Lighting**
-   - Automatic LED control based on light level
-   - Threshold: 50 lux
-   - LED turns ON when dark
-
-6. **Real-time Display**
-   - Lock status (LOCKED/OPEN)
-   - Current weight in grams
-   - Full status indicator
-
-7. **GPS Tracking**
-   - Records bin location
-   - Useful for fleet management
-
-## Important Notes
-
-⚠️ **Power Requirements:**
-- RFID MFRC522 must use **3.3V** (not 5V!)
-- SIM800A requires **separate power supply** (high current draw)
-- Consider external power for servos if using heavy-duty models
-
-⚠️ **Calibration Required:**
-- Weight sensors: Adjust `BIO_CALIBRATION_FACTOR` and `NONBIO_CALIBRATION_FACTOR`
-- Run tare operation with empty bins
-- Test with known weights
-
-⚠️ **RFID Setup:**
-- Update `authorizedUIDs[]` array with your card UIDs
-- Scan cards and copy UID from Serial Monitor
-- Format: "AA BB CC DD" (uppercase, space-separated)
-
-## Wiring Tips
-
-1. Keep I2C wires short and twisted together
-2. Use separate power rails for high-current devices (SIM800A, servos)
-3. Add decoupling capacitors near power pins of sensitive components
-4. Use shielded cable for ultrasonic sensors if experiencing noise
-5. Ground all components to common ground
+| Device | Address | Purpose |
+|--------|---------|---------|
+| LCD1 (Biodegradable) | 0x27 | Primary display |
+| LCD2 (Non-Biodegradable) | 0x25 | Secondary display |
+| BH1750 Light Sensor | 0x23 | Light level monitoring |
 
 ---
 
-## Component Wiring Instructions
+## Wiring Instructions
+
+### ⚠️ IMPORTANT NOTES BEFORE WIRING
+
+1. **GPS uses Hardware Serial (Pins 0, 1)**
+   - Serial Monitor will NOT work when GPS is connected
+   - For debugging, temporarily disconnect GPS TX/RX
+   - Reconnect GPS after uploading code
+
+2. **RFID modules share RST pin**
+   - Both RFID modules connected to pin 9 for reset
+   - Separate SS pins (8 and 10) for chip select
+   - This saves one Arduino pin
+
+3. **Power Requirements**
+   - SIM800A requires 2A current (separate power!)
+   - Use 12V battery → BMS → Buck Converter → 5V
+   - Never power SIM800A from Arduino 5V pin
+
+---
 
 ### 1. GPS Module (NEO-6M)
 
-**Connections:**
 ```
-GPS Module          Arduino Mega
-----------          ------------
-VCC        -------> 5V
-GND        -------> GND
-TX         -------> Pin 2 (RX)
-RX         -------> Pin 3 (TX)
+GPS Module      Arduino Uno
+----------      -----------
+VCC        →    5V
+GND        →    GND
+TX         →    Pin 0 (RX)
+RX         →    Pin 1 (TX)
 ```
 
-**Notes:**
-- Use SoftwareSerial library
-- Baud rate: 9600
-- Position GPS antenna with clear sky view for best signal
+**⚠️ WARNING:** 
+- Disconnect GPS when uploading code or using Serial Monitor
+- GPS uses Hardware Serial shared with USB
+- For debugging, comment out GPS code temporarily
 
 ---
 
-### 2. RFID Reader (MFRC522)
+### 2. Dual RFID Modules (MFRC522)
 
-**Connections:**
+#### Biodegradable Bin RFID
+
 ```
-MFRC522            Arduino Mega
--------            ------------
-SDA        -------> Pin 53 (SS)
-SCK        -------> Pin 52 (SCK)
-MOSI       -------> Pin 51 (MOSI)
-MISO       -------> Pin 50 (MISO)
-IRQ        -------> Not connected
-GND        -------> GND
-RST        -------> Pin 5
-3.3V       -------> 3.3V (IMPORTANT!)
+MFRC522         Arduino Uno
+-------         -----------
+SDA        →    Pin 8 (SS)
+SCK        →    Pin 13 (SCK)
+MOSI       →    Pin 11 (MOSI)
+MISO       →    Pin 12 (MISO)
+IRQ        →    Not connected
+GND        →    GND
+RST        →    Pin 9 (SHARED)
+3.3V       →    3.3V ⚠️ IMPORTANT!
 ```
 
-**⚠️ CRITICAL WARNING:**
+#### Non-Biodegradable Bin RFID
+
+```
+MFRC522         Arduino Uno
+-------         -----------
+SDA        →    Pin 10 (SS)
+SCK        →    Pin 13 (SCK) - SHARED
+MOSI       →    Pin 11 (MOSI) - SHARED
+MISO       →    Pin 12 (MISO) - SHARED
+IRQ        →    Not connected
+GND        →    GND
+RST        →    Pin 9 (SHARED)
+3.3V       →    3.3V ⚠️ IMPORTANT!
+```
+
+**⚠️ CRITICAL:**
 - **MUST use 3.3V, NOT 5V!**
-- Using 5V will damage the MFRC522 module
-- Do not use Arduino's 5V pin for this module
-
-**Setup Steps:**
-1. Install MFRC522 library from Arduino Library Manager
-2. Upload code and open Serial Monitor
-3. Scan your RFID cards/tags
-4. Copy the UID shown (format: "AA BB CC DD")
-5. Update `authorizedUIDs[]` array in code with your UIDs
+- Using 5V will damage RFID modules
+- Both RFID modules share SPI bus (MOSI, MISO, SCK)
+- Both share RST pin (Pin 9)
+- Each has unique SS pin (8 and 10)
 
 ---
 
-### 3. Weight Sensors (HX711 Load Cells)
+### 3. Ultrasonic Sensors (HC-SR04)
 
-#### Biodegradable Bin Weight Sensor
+#### Biodegradable Bin Sensor
 
-**Connections:**
 ```
-HX711 Module       Arduino Mega
-------------       ------------
-VCC        -------> 5V
-GND        -------> GND
-DT (DOUT)  -------> Pin 4
-SCK        -------> Pin 6
-```
-
-**Load Cell to HX711:**
-```
-Load Cell Wire     HX711
---------------     -----
-Red        -------> E+
-Black      -------> E-
-White      -------> A-
-Green      -------> A+
+HC-SR04         Arduino Uno
+-------         -----------
+VCC        →    5V
+GND        →    GND
+TRIG       →    Pin A0
+ECHO       →    Pin A1
 ```
 
-#### Non-Biodegradable Bin Weight Sensor
+#### Non-Biodegradable Bin Sensor
 
-**Connections:**
 ```
-HX711 Module       Arduino Mega
-------------       ------------
-VCC        -------> 5V
-GND        -------> GND
-DT (DOUT)  -------> Pin 7
-SCK        -------> Pin A4
+HC-SR04         Arduino Uno
+-------         -----------
+VCC        →    5V
+GND        →    GND
+TRIG       →    Pin A2
+ECHO       →    Pin A3
 ```
 
-**Load Cell to HX711:** (Same wiring as above)
-
-**Installation Tips:**
-- Mount load cells at the base of each bin
-- Ensure load cell is level and stable
-- Keep wires away from motors and high-current lines
-- Use 4-wire load cells for better accuracy
+**Mounting:**
+- Install at **TOP** of bin, pointing **DOWNWARD**
+- Keep 5cm+ clearance from bin walls
+- Secure firmly to prevent movement
+- Protect from moisture/condensation
 
 ---
 
-### 4. Ultrasonic Sensors (HC-SR04)
+### 4. LCD Displays (16x2 I2C)
 
-#### Biodegradable Bin Level Sensor
+#### LCD1 - Biodegradable Bin
 
-**Connections:**
 ```
-HC-SR04            Arduino Mega
--------            ------------
-VCC        -------> 5V
-GND        -------> GND
-TRIG       -------> Pin A0
-ECHO       -------> Pin A1
+LCD I2C         Arduino Uno
+-------         -----------
+VCC        →    5V
+GND        →    GND
+SDA        →    Pin A4 (SDA)
+SCL        →    Pin A5 (SCL)
 ```
-
-#### Non-Biodegradable Bin Level Sensor
-
-**Connections:**
-```
-HC-SR04            Arduino Mega
--------            ------------
-VCC        -------> 5V
-GND        -------> GND
-TRIG       -------> Pin A2
-ECHO       -------> Pin A3
-```
-
-**Mounting Instructions:**
-1. Mount sensor at the **TOP** of each bin
-2. Point sensor **downward** toward waste
-3. Keep sensor away from bin walls (min 5cm clearance)
-4. Ensure sensor is level and secure
-5. Avoid condensation on sensor surface
-
-**Distance Calculation:**
-- Empty bin (sensor to bottom): ~300cm
-- Full bin (sensor to waste): ~100cm or less
-- System triggers "FULL" when distance ≤ 100cm
-
----
-
-### 5. LCD Displays (16x2 I2C)
-
-#### LCD1 - Biodegradable Bin Display
-
-**Connections:**
-```
-LCD I2C            Arduino Mega
--------            ------------
-VCC        -------> 5V
-GND        -------> GND
-SDA        -------> Pin 20 (SDA)
-SCL        -------> Pin 21 (SCL)
-```
-
 **I2C Address:** 0x27
 
-#### LCD2 - Non-Biodegradable Bin Display
+#### LCD2 - Non-Biodegradable Bin
 
-**Connections:**
 ```
-LCD I2C            Arduino Mega
--------            ------------
-VCC        -------> 5V
-GND        -------> GND
-SDA        -------> Pin 20 (SDA)
-SCL        -------> Pin 21 (SCL)
+LCD I2C         Arduino Uno
+-------         -----------
+VCC        →    5V
+GND        →    GND
+SDA        →    Pin A4 (SDA) - SHARED
+SCL        →    Pin A5 (SCL) - SHARED
 ```
-
 **I2C Address:** 0x25
 
 **I2C Address Configuration:**
-- Most I2C LCD modules have address jumpers on the back
-- Default addresses: 0x27 or 0x3F
-- To change address, solder jumper pads on PCB
+- Check address jumpers on back of LCD module
 - Use I2C scanner sketch to verify addresses
-
-**Troubleshooting:**
-- If LCD doesn't display, check I2C address
-- Adjust contrast potentiometer on back of module
 - Ensure both LCDs have different addresses
 
 ---
 
-### 6. Light Sensor (BH1750)
+### 5. Light Sensor (BH1750)
 
-**Connections:**
 ```
-BH1750             Arduino Mega
-------             ------------
-VCC        -------> 5V (or 3.3V)
-GND        -------> GND
-SDA        -------> Pin 20 (SDA)
-SCL        -------> Pin 21 (SCL)
-ADDR       -------> GND (or VCC)
+BH1750          Arduino Uno
+------          -----------
+VCC        →    5V (or 3.3V)
+GND        →    GND
+SDA        →    Pin A4 (SDA) - SHARED
+SCL        →    Pin A5 (SCL) - SHARED
+ADDR       →    GND (for 0x23 address)
 ```
 
-**I2C Address:** 
-- 0x23 (when ADDR pin connected to GND)
-- 0x5C (when ADDR pin connected to VCC)
-
-**Function:**
-- Measures ambient light in lux
-- Controls relay for LED lighting
-- LED turns ON when lux < 50 (dark environment)
+**I2C Address:** 0x23 (ADDR to GND)
 
 ---
 
-### 7. Servo Motors (SG90 or MG90S)
+### 6. Servo Motors
 
-#### Biodegradable Bin Servo (Lock Mechanism)
+#### Biodegradable Bin Servo
 
-**Connections:**
 ```
-Servo              Arduino Mega
------              ------------
-Brown/Black ------> GND
-Red        -------> 5V (or external 5V)
-Orange/Yellow ----> Pin 11
-```
-
-#### Non-Biodegradable Bin Servo (Lock Mechanism)
-
-**Connections:**
-```
-Servo              Arduino Mega
------              ------------
-Brown/Black ------> GND
-Red        -------> 5V (or external 5V)
-Orange/Yellow ----> Pin 12
+Servo           Arduino Uno
+-----           -----------
+Brown/Black →   GND
+Red         →   5V (or external 5V)
+Orange      →   Pin 6
 ```
 
-**Power Considerations:**
-- For SG90 (small servos): Arduino 5V pin OK
-- For MG90S or larger: Use **external 5V power supply**
-- Share common GND between Arduino and external power
-- Add 100µF capacitor across servo power pins
+#### Non-Biodegradable Bin Servo
+
+```
+Servo           Arduino Uno
+-----           -----------
+Brown/Black →   GND
+Red         →   5V (or external 5V)
+Orange      →   Pin 7
+```
 
 **Servo Positions:**
-- **0°** = LOCKED (bin lid closed/blocked)
-- **90°** = UNLOCKED (bin lid open/accessible)
+- 0° = LOCKED (bin blocked)
+- 90° = UNLOCKED (bin accessible)
 
-**Mechanical Setup:**
-1. Attach servo horn to bin lid mechanism
-2. Test movement range (0° to 90°)
-3. Adjust mechanical linkage as needed
-4. Secure servo with screws or hot glue
+**Power Considerations:**
+- SG90 (small): Can use Arduino 5V
+- MG90S or larger: Use external 5V power supply
+- Add 100µF capacitor across power pins
 
 ---
 
-### 8. SIM800A GSM Module
+### 7. SIM800A GSM Module
 
-**Connections:**
 ```
-SIM800A            Arduino Mega
--------            ------------
-RXD        -------> Pin 10 (TX)
-TXD        -------> Pin 9 (RX)
-GND        -------> GND (common ground)
-VCC        -------> External 5V supply
+SIM800A         Arduino Uno
+-------         -----------
+RXD        →    Pin 5 (TX)
+TXD        →    Pin 4 (RX)
+GND        →    Common GND
+VCC        →    External 4.2V (NOT Arduino!)
 ```
 
-**⚠️ CRITICAL POWER REQUIREMENTS:**
+**⚠️ CRITICAL POWER:**
 - **DO NOT power from Arduino 5V pin!**
-- Requires 2A current during transmission
-- Use one of these options:
-  1. Dedicated 5V 2A power adapter
-  2. 3.7V LiPo battery (recommended)
-  3. 5V to 4.2V buck converter from external supply
+- Requires 2A during transmission
+- Use 3.7V LiPo battery OR
+- Use separate 5V→4.2V buck converter
 
 **SIM Card Setup:**
-1. Insert activated SIM card (PIN disabled)
+1. Insert activated SIM card (disable PIN)
 2. Ensure SIM has credit for SMS
-3. Update `phoneNumber[]` in code with recipient number
-4. Include country code (e.g., "+639567669410")
-
-**Antenna:**
-- Connect GSM antenna to SIM800A
-- Position antenna vertically for best signal
-
-**Testing:**
-1. Power on SIM800A
-2. Wait for network LED to blink (every 3 seconds = connected)
-3. Check Serial Monitor for "SMS SENT" messages
+3. Connect GSM antenna
+4. Update phone number in code
 
 ---
 
-### 9. Relay Module (for LED Control)
+### 8. Buzzer
 
-**Connections:**
 ```
-Relay Module       Arduino Mega
-------------       ------------
-VCC        -------> 5V
-GND        -------> GND
-IN         -------> Pin 8
-COM        -------> LED Power Supply (+)
-NO         -------> LED Strip (+)
+Buzzer          Arduino Uno
+------          -----------
+Positive   →    Pin 2
+Negative   →    GND
 ```
 
-**LED Strip Connections:**
+**Buzzer Types:**
+- Active buzzer: Simpler, fixed frequency
+- Passive buzzer: Requires tone() function, variable frequency
+
+**Buzzer Patterns:**
+- Success: Two ascending tones
+- Error: Two low tones
+- Full: Three short beeps
+- Short: Single quick beep
+
+---
+
+### 9. Relay Module (LED Control)
+
 ```
-LED Strip          Power/Relay
----------          -----------
-(+)        -------> Relay NO
-(-)        -------> Power Supply (-)
+Relay Module    Arduino Uno
+------------    -----------
+VCC        →    5V
+GND        →    GND
+IN         →    Pin 3
+COM        →    LED Power (+)
+NO         →    LED Strip (+)
+```
+
+**LED Strip Connection:**
+```
+LED Strip       Power/Relay
+---------       -----------
+(+)        →    Relay NO
+(-)        →    Power Supply (-)
 ```
 
 **Logic:**
-- Active LOW relay (common for modules with optocouplers)
-- `digitalWrite(8, LOW)` = LED ON
-- `digitalWrite(8, HIGH)` = LED OFF
-- System turns LED ON when ambient light < 50 lux
-
-**LED Specifications:**
-- Use 12V LED strips with separate 12V power supply
-- Do NOT connect LED directly to Arduino pins
-- Relay rated for LED current (typically 10A max)
+- Active LOW relay
+- Pin 3 LOW = LED ON
+- Pin 3 HIGH = LED OFF
 
 ---
 
-## System Configuration
+## Power System
+
+### System Architecture
+
+```
+12V Battery
+    ↓
+Battery Management System (BMS)
+    ↓
+12V Output
+    ├→ LED Strip (12V)
+    └→ 5V Buck Converter (3A+)
+        ├→ Arduino Uno (5V)
+        ├→ GPS Module (5V)
+        ├→ RFID Modules (3.3V via Arduino)
+        ├→ LCD Displays (5V)
+        ├→ Ultrasonic Sensors (5V)
+        ├→ Servo Motors (5V)
+        ├→ BH1750 (5V)
+        ├→ Buzzer (5V)
+        ├→ Relay Module (5V)
+        └→ SIM800A (4.2V via separate converter)
+```
+
+### Power Requirements
+
+| Component | Voltage | Current | Notes |
+|-----------|---------|---------|-------|
+| Arduino Uno | 5V | 50mA | Via buck converter |
+| GPS | 5V | 50mA | Continuous |
+| RFID (x2) | 3.3V | 26mA each | Via Arduino regulator |
+| LCD (x2) | 5V | 20mA each | With backlight |
+| Ultrasonic (x2) | 5V | 15mA each | When active |
+| Servo (x2) | 5V | 100-500mA | Peak during movement |
+| BH1750 | 5V | 0.12mA | Very low |
+| Buzzer | 5V | 30mA | When active |
+| Relay | 5V | 70mA | Coil |
+| SIM800A | 3.7-4.2V | 2A | **Peak during transmission!** |
+| LED Strip | 12V | Varies | Depends on length |
+
+**Total Estimated:** ~3-4A @ 5V (with SIM800A separate)
+
+### Recommended Power Supply
+
+**Option 1: Battery System (Recommended)**
+- 12V 7Ah+ rechargeable battery
+- 12V BMS (10A rating)
+- 12V→5V buck converter (5A rating)
+- Separate 5V→4.2V converter for SIM800A (3A)
+
+**Option 2: AC Adapter**
+- 12V 5A wall adapter
+- Same buck converters as above
+
+---
+
+## Software Setup
 
 ### Required Arduino Libraries
 
-Install these libraries from Arduino Library Manager:
+Install from Arduino Library Manager:
 
-1. **TinyGPS++** - GPS parsing
-2. **LiquidCrystal_I2C** - I2C LCD control
-3. **BH1750** - Light sensor
-4. **Servo** - Servo motor control (built-in)
-5. **MFRC522** - RFID reader
-6. **HX711** - Weight sensor (load cell amplifier)
-7. **Wire** - I2C communication (built-in)
-8. **SPI** - SPI communication (built-in)
-9. **SoftwareSerial** - Software serial (built-in)
+1. **TinyGPS++** (by Mikal Hart)
+2. **LiquidCrystal_I2C** (by Frank de Brabander)
+3. **BH1750** (by Christopher Laws)
+4. **MFRC522** (by GithubCommunity)
+5. **Servo** (built-in)
+6. **Wire** (built-in)
+7. **SPI** (built-in)
+8. **SoftwareSerial** (built-in)
 
-### Code Configuration
+### Configuration Settings
 
-**1. Phone Number (SMS Alerts):**
+**1. Phone Number (SMS Alerts)**
 ```cpp
-const char phoneNumber[] = "+639567669410"; // Your number with country code
+const char phoneNumber[] = "+639567669410"; // Include country code
 ```
 
-**2. Weight Thresholds:**
+**2. Distance Threshold**
 ```cpp
-const float BIO_WEIGHT_THRESHOLD = 5000.0;    // 5 kg in grams
-const float NONBIO_WEIGHT_THRESHOLD = 5000.0; // 5 kg in grams
+const long FULL_THRESHOLD = 10; // cm - closer = bin fuller
 ```
 
-**3. Distance Threshold:**
+**3. Light Threshold**
 ```cpp
-const long FULL_THRESHOLD = 100; // cm - bin considered full
+const float LUX_THRESHOLD = 50.0; // LED turns on when lux < 50
 ```
 
-**4. Light Threshold:**
-```cpp
-const float LUX_THRESHOLD = 50.0; // LED turns on below this
-```
-
-**5. RFID Authorized Users:**
+**4. RFID Authorized Users**
 ```cpp
 String authorizedUIDs[] = {
-  "AA BB CC DD",  // Replace with your card UID
-  "11 22 33 44"   // Add more UIDs as needed
+  "AA BB CC DD",  // Replace with actual UID
+  "11 22 33 44"   // Add more as needed
 };
 const int numAuthorizedUIDs = 2; // Update count
 ```
 
+**5. Servo Positions**
+```cpp
+const int SERVO_LOCKED = 0;    // Adjust if needed (0-180)
+const int SERVO_UNLOCKED = 90; // Adjust if needed (0-180)
+```
+
+### Getting RFID UIDs
+
+1. Upload code to Arduino
+2. Disconnect GPS temporarily
+3. Open Serial Monitor (9600 baud)
+4. Scan your RFID cards
+5. Copy UID shown (format: "AA BB CC DD")
+6. Update `authorizedUIDs[]` array
+7. Reconnect GPS
+
 ---
 
-## Testing & Calibration
+## Calibration & Testing
 
-### 1. Weight Sensor Calibration
+### 1. Ultrasonic Sensor Testing
 
-**Step 1: Tare (Zero) the Scale**
+**Empty Bin Test:**
+1. Mount sensor at top of empty bin
+2. Power on system
+3. Disconnect GPS RX/TX
+4. Open Serial Monitor (9600 baud) - Will show debug info in actual deployment without GPS disconnect
+5. Check distance reading (should be ~200-300cm for empty bin)
+
+**Full Bin Test:**
+1. Place object/hand 10cm from sensor
+2. Distance should read ~10cm or less
+3. System should trigger "FULL" status
+4. Servo should lock
+5. Buzzer should beep (3 times)
+6. LCD should show "LOCKED ... FULL"
+
+**Adjust Threshold:**
 ```cpp
-// In setup(), this line zeros the scale:
-scaleBio.tare();
-scaleNonBio.tare();
+const long FULL_THRESHOLD = 10; // Decrease for earlier trigger, increase for later
 ```
 
-**Step 2: Find Calibration Factor**
-1. Upload test sketch (read raw values)
-2. Place known weight (e.g., 1 kg)
-3. Calculate: `calibration_factor = raw_value / known_weight`
-4. Update in code:
-```cpp
-const float BIO_CALIBRATION_FACTOR = -7050.0;     // Adjust this
-const float NONBIO_CALIBRATION_FACTOR = -7050.0;  // Adjust this
-```
+---
 
-**Step 3: Verify**
-1. Place 1 kg → Should read ~1000g
-2. Place 2 kg → Should read ~2000g
-3. Fine-tune calibration factor if needed
+### 2. RFID User Testing
 
-### 2. Ultrasonic Sensor Testing
+**Scan Test:**
+1. Hold RFID card/tag near Biodegradable bin reader
+2. Buzzer should beep twice (success) or once (error)
+3. LCD1 should show "User: OK" or "Unknown user"
+4. Repeat for Non-Biodegradable bin reader
 
-**Verify Distance Readings:**
-1. Open Serial Monitor (9600 baud)
-2. Check debug output:
-```
-BioDist: 250cm | NonBioDist: 180cm
-```
-3. Place hand above sensor → distance should decrease
-4. Remove hand → distance should increase
+**Add New Users:**
+1. Scan unknown card
+2. Note UID from LCD or Serial Monitor
+3. Add UID to `authorizedUIDs[]` array
+4. Re-upload code
+5. Test again - should now show "User: OK"
 
-**Adjust Threshold if Needed:**
-- If bin triggers "FULL" too early → increase threshold
-- If bin doesn't detect full → decrease threshold
+---
 
 ### 3. Servo Lock Testing
 
-**Test Lock Mechanism:**
-1. Watch servo on startup → should be at 90° (UNLOCKED)
-2. Manually trigger "FULL" condition → servo moves to 0° (LOCKED)
-3. Remove full condition → servo returns to 90° (UNLOCKED)
+**Lock/Unlock Test:**
+1. Cover ultrasonic sensor (simulate full bin)
+2. Servo should move to 0° (LOCKED)
+3. Buzzer beeps 3 times
+4. LCD shows "LOCKED"
+5. Remove hand from sensor
+6. Servo returns to 90° (UNLOCKED)
+7. Buzzer beeps twice (success)
+8. LCD shows "OPEN"
 
-**Adjust Servo Angles if Needed:**
+**Adjust Servo Angles:**
 ```cpp
-const int SERVO_LOCKED = 0;    // Change if needed (0-180)
-const int SERVO_UNLOCKED = 90; // Change if needed (0-180)
+const int SERVO_LOCKED = 0;    // Try 10, 20, etc.
+const int SERVO_UNLOCKED = 90; // Try 80, 100, etc.
 ```
 
-### 4. RFID User Logging Test
+---
 
-**Scan Test Cards:**
-1. Hold RFID card near reader
-2. Check Serial Monitor for UID
-3. LCD should show "User logged" or "Unknown user"
-4. Copy UID and add to `authorizedUIDs[]` array
+### 4. SMS Alert Testing
 
-### 5. SMS Alert Testing
-
-**Send Test SMS:**
-1. Manually set bin to FULL (add weight or cover sensor)
-2. Wait for SMS (may take 10-30 seconds)
-3. Check phone for message
-4. Verify message content includes weight
+**Test Message:**
+1. Trigger full condition (cover sensor)
+2. Wait 10-30 seconds
+3. Check phone for SMS
+4. Message should include:
+   - Bin type (Biodegradable or Non-Biodegradable)
+   - Distance reading
+   - GPS coordinates (if available)
 
 **Troubleshooting SMS:**
-- No SMS? Check SIM800A power and antenna
-- Check SIM card has credit
-- Verify phone number format includes country code
-- Check Serial Monitor for "SMS SENT" confirmation
+- Check SIM800A power (separate 4.2V supply)
+- Verify SIM card has credit
+- Ensure antenna is connected
+- Check network LED (blinks every 3 seconds when connected)
+- Verify phone number format: "+[country code][number]"
 
-### 6. LCD Display Check
+---
 
-**Verify Display Output:**
+### 5. LCD Display Check
+
+**Expected Display:**
+
+**Biodegradable LCD (0x27):**
 ```
-Row 1: "Biodegradable" or "Non-Biodegrad."
-Row 2: "OPEN 1234g" or "LOCKED 5678g FULL"
+Row 1: Biodegradable
+Row 2: OPEN   25cm
 ```
 
-**If Display Not Working:**
-- Run I2C scanner to find address
-- Adjust contrast potentiometer
-- Check wiring (SDA/SCL)
+or when full:
+```
+Row 1: Biodegradable
+Row 2: LOCKED 8cm FULL
+```
+
+**If LCD not working:**
+1. Check I2C address with scanner
+2. Verify SDA/SCL connections
+3. Adjust contrast potentiometer on back
+4. Ensure both LCDs have different addresses
+
+---
+
+### 6. LED Strip & Light Sensor
+
+**Test Automatic Control:**
+1. Cover light sensor (simulate darkness)
+2. LED strip should turn ON
+3. Uncover sensor (simulate daylight)
+4. LED strip should turn OFF
+
+**Adjust Light Threshold:**
+```cpp
+const float LUX_THRESHOLD = 50.0; // Increase for later LED turn-on
+```
+
+---
+
+### 7. GPS Testing
+
+**Note:** GPS testing requires disconnecting from Serial Monitor
+
+**Verify GPS Lock:**
+1. Upload code with GPS connected
+2. Disconnect USB
+3. Power via battery/external supply
+4. Wait 1-2 minutes outdoors
+5. GPS should acquire satellite lock
+6. Location data included in SMS alerts
+
+**GPS Not Working:**
+- Ensure clear view of sky
+- Wait longer for satellite acquisition (2-5 minutes)
+- Check antenna connection
+- Verify baud rate (9600)
+
+---
+
+## System Operation
+
+### Normal Operation Flow
+
+```
+STEP 1: System Startup
+    ↓
+Bins are UNLOCKED (servos at 90°)
+LCD shows "Ready - OPEN"
+Buzzer gives startup beep
+    ↓
+STEP 2: User Approaches Bin
+    ↓
+[Optional] User scans RFID card
+    ├→ Authorized: Buzzer beeps twice, LCD shows "User: OK"
+    └→ Unknown: Buzzer beeps once (low), LCD shows "Unknown user"
+    ↓
+STEP 3: User Disposes Waste
+    ↓
+Ultrasonic sensor monitors fill level
+LCD shows current distance
+    ↓
+STEP 4: Bin Fills Up
+    ↓
+Distance ≤ 10cm (FULL threshold reached)
+    ├→ Servo LOCKS (moves to 0°)
+    ├→ Buzzer beeps 3 times
+    ├→ LCD shows "LOCKED ... FULL"
+    └→ SMS sent to admin with GPS location
+    ↓
+STEP 5: Bin Remains Locked
+    ↓
+User cannot access full bin
+System continues monitoring
+    ↓
+STEP 6: Admin Empties Bin
+    ↓
+Distance increases (waste removed)
+Distance > 10cm (no longer full)
+    ├→ Servo UNLOCKS (moves to 90°)
+    ├→ Buzzer beeps twice (success)
+    ├→ LCD shows "OPEN"
+    └→ Ready for use again
+```
+
+### Lock Logic Table
+
+| Distance | Bio Bin | Non-Bio Bin |
+|----------|---------|-------------|
+| > 10cm | UNLOCKED | UNLOCKED |
+| ≤ 10cm | LOCKED | LOCKED |
+
+**Note:** Each bin operates independently
 
 ---
 
 ## Troubleshooting
 
-### GPS Not Working
-- Check antenna connection
-- Ensure clear view of sky
-- Verify baud rate (9600)
-- Wait 1-2 minutes for fix
+### GPS Issues
 
-### RFID Not Reading Cards
-- Check 3.3V power (NOT 5V!)
-- Verify SPI connections
-- Ensure card is compatible (13.56 MHz)
-- Hold card flat against reader
+**Problem:** GPS not acquiring fix
+- **Solution:** 
+  - Position antenna with clear sky view
+  - Wait 2-5 minutes outdoors
+  - Check antenna connection
+  - Verify baud rate (9600)
 
-### Weight Sensor Reading Zero
-- Check load cell wiring (color coding)
-- Verify HX711 connections
-- Run tare operation
-- Adjust calibration factor
-
-### Ultrasonic Sensor Showing "---"
-- Check power connections
-- Verify TRIG/ECHO pins
-- Ensure sensor not blocked
-- Check timeout in code
-
-### Servos Not Moving
-- Check power supply (external for large servos)
-- Verify signal wire connection
-- Test with servo sweep example
-- Check servo positions in code
-
-### SMS Not Sending
-- Verify SIM800A has separate power (2A)
-- Check SIM card insertion and credit
-- Verify antenna connection
-- Check network LED (should blink every 3s)
-- Update phone number format
-
-### LCD Not Displaying
-- Run I2C scanner sketch
-- Check I2C address in code
-- Verify SDA/SCL connections
-- Adjust contrast pot
-
-### LED Not Turning On
-- Check relay connections
-- Verify LED power supply
-- Test relay manually
-- Check light threshold value
+**Problem:** Serial Monitor not working
+- **Solution:** 
+  - Disconnect GPS TX (Pin 1) when debugging
+  - Comment out GPS code temporarily
+  - Or accept that Serial Monitor won't work with GPS
 
 ---
 
-## System Operation Flow
+### RFID Issues
 
-### Normal Operation:
+**Problem:** Cards not detected
+- **Solution:**
+  - Verify 3.3V power (NOT 5V!)
+  - Check SPI connections (11, 12, 13)
+  - Ensure SS pins correct (8 and 10)
+  - Verify RST pin (9) connected to both
+  - Hold card flat against reader
+  - Check card compatibility (13.56MHz)
 
-```
-1. System starts → Bins UNLOCKED
-   ↓
-2. User approaches bin
-   ↓
-3. [Optional] Scan RFID card → User logged
-   ↓
-4. User disposes waste → Weight increases
-   ↓
-5. System monitors continuously:
-   - Weight sensor: Current weight
-   - Ultrasonic: Fill level
-   - Display: Shows status
-   ↓
-6. When FULL (weight ≥ 5kg OR distance ≤ 100cm):
-   - Servo LOCKS (moves to 0°)
-   - LCD shows "LOCKED ... FULL"
-   - SMS sent to admin
-   ↓
-7. Admin empties bin:
-   - Weight decreases
-   - Distance increases
-   ↓
-8. System detects not full:
-   - Servo UNLOCKS (moves to 90°)
-   - LCD shows "OPEN"
-   - Ready for use again
-```
+**Problem:** Only one RFID works
+- **Solution:**
+  - Check SS pins are different (8 vs 10)
+  - Verify both RFID modules share RST pin 9
+  - Ensure SPI bus shared correctly
+  - Test each module individually
 
-### Lock Logic Summary:
+---
 
-| Condition | Bio Bin | Non-Bio Bin |
-|-----------|---------|-------------|
-| Weight < 5kg AND Distance > 100cm | UNLOCKED | UNLOCKED |
-| Weight ≥ 5kg OR Distance ≤ 100cm | LOCKED | LOCKED |
+### Ultrasonic Sensor Issues
 
-**Note:** Each bin operates independently. One bin can be LOCKED while the other is UNLOCKED.
+**Problem:** Distance shows MAX (300+cm) always
+- **Solution:**
+  - Check TRIG/ECHO pin connections
+  - Verify 5V power
+  - Ensure sensor not blocked
+  - Check timeout in code (50000µs)
+  - Test with known distance
+
+**Problem:** Erratic readings
+- **Solution:**
+  - Secure sensor firmly
+  - Keep away from bin walls (5cm+ clearance)
+  - Avoid condensation on sensor
+  - Increase DIST_SAMPLES if needed
+
+---
+
+### Servo Issues
+
+**Problem:** Servos not moving
+- **Solution:**
+  - Check power supply (external for MG90S)
+  - Verify signal wire (Pin 6 and 7)
+  - Test with servo sweep example
+  - Ensure servo.attach() called
+  - Check servo angle limits (0-180)
+
+**Problem:** Servo jitters
+- **Solution:**
+  - Use external 5V power supply
+  - Add 100µF capacitor across power
+  - Check for power supply noise
+  - Reduce servo speed in code
+
+---
+
+### SMS/SIM800A Issues
+
+**Problem:** No SMS sent
+- **Solution:**
+  - Verify separate power supply (4.2V, 2A)
+  - Check SIM card inserted and has credit
+  - Verify antenna connected
+  - Check network LED (should blink every 3s)
+  - Update phone number format (+country code)
+  - Check SoftwareSerial pins (RX=4, TX=5)
+
+**Problem:** Module resets randomly
+- **Solution:**
+  - Insufficient power - use separate supply
+  - Add 1000µF capacitor near SIM800A
+  - Check battery/power supply capacity
+
+---
+
+### LCD Issues
+
+**Problem:** LCD not displaying
+- **Solution:**
+  - Run I2C scanner to find address
+  - Check SDA/SCL connections (A4, A5)
+  - Verify 5V power
+  - Adjust contrast pot on back
+  - Ensure addresses different (0x27 vs 0x25)
+
+**Problem:** Garbled text
+- **Solution:**
+  - Check I2C address in code
+  - Verify 16x2 LCD (not 20x4)
+  - Slow down I2C if needed
+  - Check for loose connections
+
+---
+
+### Buzzer Issues
+
+**Problem:** No sound
+- **Solution:**
+  - Check Pin 2 connection
+  - Verify buzzer polarity (+/-)
+  - Test with simple tone() sketch
+  - Try different buzzer (active vs passive)
+
+**Problem:** Wrong frequency/pattern
+- **Solution:**
+  - Passive buzzer needs tone() function
+  - Active buzzer has fixed frequency
+  - Check beep functions in code
+
+---
+
+### LED Strip Issues
+
+**Problem:** LED not turning on
+- **Solution:**
+  - Check relay connections
+  - Verify 12V power to LED strip
+  - Test relay manually (digitalWrite)
+  - Check light threshold value
+  - Ensure relay rated for LED current
+
+**Problem:** LED always on/off
+- **Solution:**
+  - Cover/uncover light sensor
+  - Check BH1750 I2C connection
+  - Verify lux threshold (50)
+  - Test with Serial Monitor (lux reading)
+
+---
+
+### Power Issues
+
+**Problem:** System resets randomly
+- **Solution:**
+  - Check power supply capacity (5A+)
+  - SIM800A on separate power
+  - Add bulk capacitors (1000µF)
+  - Check battery charge level
+  - Verify BMS functioning
+
+**Problem:** Arduino won't power on
+- **Solution:**
+  - Check buck converter output (5V)
+  - Verify BMS output
+  - Test battery voltage (12V)
+  - Check all GND connections
 
 ---
 
 ## Safety & Maintenance
 
-### Safety Precautions:
-1. ⚠️ **Never connect 5V to 3.3V components** (RFID, SIM800A power)
-2. ⚠️ **Use separate power for SIM800A** (minimum 2A capability)
-3. ⚠️ **Keep water away from electronics**
-4. ⚠️ **Secure all wiring** to prevent shorts
-5. ⚠️ **Test servos before final installation**
+### Safety Precautions
 
-### Regular Maintenance:
-- Clean ultrasonic sensor surfaces weekly
-- Check load cell mounting monthly
-- Verify GPS antenna position
-- Test SMS functionality monthly
-- Inspect wiring for damage
-- Clean RFID reader surface
+⚠️ **Electrical Safety:**
+1. Never connect 5V to 3.3V components (RFID)
+2. Use separate power for SIM800A (2A minimum)
+3. Ensure all connections properly insulated
+4. Keep electronics away from water
+5. Secure all wiring to prevent shorts
 
-### Recommended Upgrades:
-- Add waterproof enclosure for electronics
-- Use terminal blocks for easier maintenance
-- Add status LEDs for visual feedback
-- Implement data logging to SD card
-- Add battery backup for SIM800A
+⚠️ **Mechanical Safety:**
+1. Test servo lock mechanism before installation
+2. Ensure servo cannot pinch users
+3. Secure all components against vibration
+4. Use appropriate enclosures
+
+### Regular Maintenance
+
+**Weekly:**
+- Clean ultrasonic sensor surfaces
+- Check LCD display functionality
+- Test RFID readers
+- Verify LED strip operation
+
+**Monthly:**
+- Test SMS functionality
+- Check GPS satellite acquisition
+- Inspect all wiring for damage
+- Test servo lock mechanism
+- Verify battery charge level
+
+**Quarterly:**
+- Full system calibration
+- Replace battery if needed
+- Clean all sensors
+- Update RFID authorized list
+
+### Recommended Upgrades
+
+**Reliability:**
+- Waterproof enclosure for electronics
+- Backup power (UPS module)
+- Watchdog timer for auto-reset
+
+**Usability:**
+- Status LEDs for visual feedback
+- SD card data logging
+- Wi-Fi module for remote monitoring
+- Touch screen interface
+
+**Scalability:**
+- Multiple bin network
+- Central monitoring system
+- Cloud data storage
+- Mobile app integration
 
 ---
 
-## Support & Resources
+## Technical Specifications
 
-### Useful Links:
-- TinyGPS++ Documentation: http://arduiniana.org/libraries/tinygpsplus/
-- HX711 Calibration Guide: https://learn.sparkfun.com/tutorials/load-cell-amplifier-hx711-breakout-hookup-guide
-- MFRC522 Library: https://github.com/miguelbalboa/rfid
-- SIM800A AT Commands: https://www.elecrow.com/wiki/index.php?title=SIM800_Series_AT_Command_Manual
+### System Capabilities
 
-### Common Arduino Mega Pin References:
-- SPI: 50 (MISO), 51 (MOSI), 52 (SCK), 53 (SS)
-- I2C: 20 (SDA), 21 (SCL)
-- PWM: 2-13, 44-46
-- Analog: A0-A15
+**Bins Supported:** 2 (Biodegradable, Non-Biodegradable)
+**User Capacity:** Unlimited RFID cards
+**Detection Range:** 2cm - 300cm (ultrasonic)
+**Lock Response Time:** < 1 second
+**SMS Delay:** 10-30 seconds
+**GPS Accuracy:** ±5-10 meters (outdoor)
+**LCD Update Rate:** 2 Hz (500ms)
+**Power Consumption:** ~3-4A @ 5V
+
+### Environmental Specifications
+
+**Operating Temperature:** -10°C to +50°C
+**Operating Humidity:** 10% - 90% (non-condensing)
+**Storage Temperature:** -20°C to +60°C
+**IP Rating:** IP40 (recommend IP65 enclosure)
+
+---
+
+## Pin Summary Quick Reference
+
+```
+DIGITAL PINS:
+D0  - GPS RX (conflicts with Serial Monitor)
+D1  - GPS TX (conflicts with Serial Monitor)
+D2  - Buzzer
+D3  - Relay (LED Control)
+D4  - SIM800A RX
+D5  - SIM800A TX
+D6  - Servo Biodegradable
+D7  - Servo Non-Biodegradable
+D8  - RFID Bio SS
+D9  - RFID Shared RST
+D10 - RFID NonBio SS
+D11 - SPI MOSI (both RFID)
+D12 - SPI MISO (both RFID)
+D13 - SPI SCK (both RFID)
+
+ANALOG PINS:
+A0  - Ultrasonic Bio TRIG
+A1  - Ultrasonic Bio ECHO
+A2  - Ultrasonic NonBio TRIG
+A3  - Ultrasonic NonBio ECHO
+A4  - I2C SDA (LCD1, LCD2, BH1750)
+A5  - I2C SCL (LCD1, LCD2, BH1750)
+```
+
+---
+
+## Support Resources
+
+### Useful Links
+
+- **Arduino Reference:** https://www.arduino.cc/reference/en/
+- **TinyGPS++ Docs:** http://arduiniana.org/libraries/tinygpsplus/
+- **MFRC522 Library:** https://github.com/miguelbalboa/rfid
+- **SIM800A AT Commands:** https://www.elecrow.com/wiki/index.php?title=SIM800_Series_AT_Command_Manual
+
+### I2C Scanner Code
+
+```cpp
+// Use this to find LCD addresses
+#include <Wire.h>
+
+void setup() {
+  Wire.begin();
+  Serial.begin(9600);
+  Serial.println("I2C Scanner");
+}
+
+void loop() {
+  for(byte i = 1; i < 127; i++) {
+    Wire.beginTransmission(i);
+    if (Wire.endTransmission() == 0) {
+      Serial.print("Found address: 0x");
+      if (i<16) Serial.print('0');
+      Serial.println(i, HEX);
+    }
+  }
+  delay(5000);
+}
+```
+
+---
+
+## Version History
+
+**v2.0 - Arduino Uno Edition**
+- Migrated from Arduino Mega to Uno
+- Added dual RFID modules (one per bin)
+- Removed weight sensors (HX711)
+- Added buzzer for audio feedback
+- Optimized pin usage for Arduino Uno
+- Updated power system documentation
+
+**v1.0 - Arduino Mega Edition**
+- Initial release with weight sensors
+- Single RFID module
+- Arduino Mega 2560
+
+---
+
+## License & Credits
+
+**License:** MIT License - Free for educational and commercial use
+
+**Credits:**
+- Arduino Community
+- Library Authors (TinyGPS++, MFRC522, BH1750, etc.)
+- Smart Bin Project Team
+
+---
+
+## Contact & Support
+
+For questions, issues, or improvements:
+1. Check Troubleshooting section
+2. Verify wiring matches pin assignments
+3. Test components individually
+4. Check library versions
+
+**Remember:** GPS uses Hardware Serial (pins 0, 1) which conflicts with USB Serial Monitor. Disconnect GPS when debugging!
+
+---
+
+**END OF DOCUMENTATION**
