@@ -1,57 +1,56 @@
 #include <Servo.h>
 
-// Create servo objects
-Servo servo1;
-Servo servo2;
+// Servo setup
+Servo servoBio;
+Servo servoNon;
 
-// Define servo pins
-const int SERVO1_PIN = 9;
-const int SERVO2_PIN = 10;
+const int servoBioPin = 6;       // BIO bin servo signal
+const int servoNonPin = 7;       // NON-BIO bin servo signal
+
+// Swap the angles: now 0 = unlocked, 90 = locked
+const int SERVO_UNLOCKED = 0;    // Servo fully open
+const int SERVO_LOCKED = 90;     // Servo fully locked
 
 void setup() {
-  // Attach servos to their pins
-  servo1.attach(SERVO1_PIN);
-  servo2.attach(SERVO2_PIN);
-  
-  // Initialize servos to center position (90 degrees)
-  servo1.write(90);
-  servo2.write(90);
-  
-  // Optional: Start serial communication for debugging
   Serial.begin(9600);
-  Serial.println("Two Servo Control Ready");
+
+  // Attach servos
+  servoBio.attach(servoBioPin);
+  servoNon.attach(servoNonPin);
+
+  // Start both unlocked
+  servoBio.write(SERVO_UNLOCKED);
+  servoNon.write(SERVO_UNLOCKED);
+
+  Serial.println("Dual Servo Test Ready!");
+  Serial.println("Commands:");
+  Serial.println("LOCKBIO / UNLOCKBIO");
+  Serial.println("LOCKNON / UNLOCKNON");
 }
 
 void loop() {
-  // Example 1: Sweep both servos together from 0 to 180 degrees
-  for (int pos = 0; pos <= 180; pos++) {
-    servo1.write(pos);
-    servo2.write(pos);
-    delay(15);
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n');
+    command.trim(); // Remove whitespace
+
+    if (command.equalsIgnoreCase("LOCKBIO")) {
+      servoBio.write(SERVO_LOCKED);
+      Serial.println("BIO Servo LOCKED");
+    } 
+    else if (command.equalsIgnoreCase("UNLOCKBIO")) {
+      servoBio.write(SERVO_UNLOCKED);
+      Serial.println("BIO Servo UNLOCKED");
+    } 
+    else if (command.equalsIgnoreCase("LOCKNON")) {
+      servoNon.write(SERVO_LOCKED);
+      Serial.println("NON-BIO Servo LOCKED");
+    } 
+    else if (command.equalsIgnoreCase("UNLOCKNON")) {
+      servoNon.write(SERVO_UNLOCKED);
+      Serial.println("NON-BIO Servo UNLOCKED");
+    } 
+    else {
+      Serial.println("Unknown command. Use LOCKBIO, UNLOCKBIO, LOCKNON, UNLOCKNON");
+    }
   }
-  
-  delay(500);
-  
-  // Sweep back from 180 to 0 degrees
-  for (int pos = 180; pos >= 0; pos--) {
-    servo1.write(pos);
-    servo2.write(pos);
-    delay(15);
-  }
-  
-  delay(500);
-  
-  // Example 2: Move servos in opposite directions
-  for (int pos = 0; pos <= 180; pos++) {
-    servo1.write(pos);           // Servo 1 goes 0 to 180
-    servo2.write(180 - pos);     // Servo 2 goes 180 to 0
-    delay(15);
-  }
-  
-  delay(500);
-  
-  // Return to center
-  servo1.write(90);
-  servo2.write(90);
-  delay(1000);
 }
