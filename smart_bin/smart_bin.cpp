@@ -2,10 +2,9 @@
  * SMART WASTE BIN SYSTEM v3.1
  * smart_bin.cpp - full implementation
  *
- * Sensor: top-down lid mount
- *   30cm = empty (0%)
- *   10cm = full (100%)
- *   level% = (30 - dist) / 20 * 100
+ * Per-bin calibration:
+ *   BIO    empty=95cm  full=10cm  usable=85cm
+ *   NONBIO empty=50cm  full=10cm  usable=40cm
  *
  * Servo: OPEN=0deg, LOCKED=90deg
  */
@@ -36,8 +35,8 @@ unsigned long lastLuxRead    = 0;
 bool          bioLocked      = false;
 bool          nonLocked      = false;
 
-long          bioDist        = BIN_DEPTH_CM;
-long          nonDist        = BIN_DEPTH_CM;
+long          bioDist        = BIO_DEPTH_CM;
+long          nonDist        = NON_DEPTH_CM;
 unsigned long lastUSRead     = 0;
 
 int           bioFullCnt     = 0;
@@ -98,50 +97,106 @@ int getSignal()
 /* -------------------------------------------
    HELPER: READ MEDIAN DISTANCE
    5 pulses -> bubble sort -> return median
+   Improved timeout handling for close objects
    ------------------------------------------- */
 long readDist(uint8_t trig, uint8_t echo)
 {
     const uint8_t N = 5;
     long v[N];
+    int validCount = 0;
+    
     for (uint8_t i = 0; i < N; i++) {
-        digitalWrite(trig, LOW);  delayMicroseconds(2);
+        digitalWrite(trig, LOW);  delayMicroseconds(5);
         digitalWrite(trig, HIGH); delayMicroseconds(10);
         digitalWrite(trig, LOW);
-        long d = pulseIn(echo, HIGH, 30000UL);
-        v[i] = (d > 0) ? (d * 34L / 2000L) : 999L;
-        delay(8);
+        
+        // Longer timeout for far objects, but also handle very close
+        long duration = pulseIn(echo, HIGH, 40000UL);
+        
+        if (duration > 0) {
+            long dist = (duration * 34L) / 2000L;
+            // Valid range: 2cm to 400cm
+            if (dist >= 2 && dist <= 400) {
+                v[i] = dist;
+                validCount++;
+            } else if (dist < 2) {
+                // Object is extremely close (touching sensor)
+                v[i] = 2;  // Minimum readable distance
+                validCount++;
+            } else {
+                v[i] = 999L;  // Out of range
+            }
+        } else {
+            // Timeout - could mean very close or no echo
+            // Try one more quick read
+            digitalWrite(trig, LOW);  delayMicroseconds(2);
+            digitalWrite(trig, HIGH); delayMicroseconds(10);
+            digitalWrite(trig, LOW);
+            duration = pulseIn(echo, HIGH, 10000UL);
+            
+            if (duration > 0 && duration < 200) {
+                // Very close object
+                v[i] = 2;
+                validCount++;
+            } else {
+                v[i] = 999L;
+            }
+        }
+        delay(10);
     }
-    for (uint8_t i = 0; i < N - 1; i++)
-        for (uint8_t j = i + 1; j < N; j++)
-            if (v[i] > v[j]) { long t = v[i]; v[i] = v[j]; v[j] = t; }
-    return v[N / 2];
+    
+    // If we got at least 3 valid readings, use median
+    if (validCount >= 3) {
+        // Bubble sort
+        for (uint8_t i = 0; i < N - 1; i++)
+            for (uint8_t j = i + 1; j < N; j++)
+                if (v[i] > v[j]) { long t = v[i]; v[i] = v[j]; v[j] = t; }
+        return v[N / 2];
+    }
+    
+    // If mostly invalid, return the best valid reading we got
+    long minValid = 999L;
+    for (uint8_t i = 0; i < N; i++) {
+        if (v[i] < 999L && v[i] < minValid) {
+            minValid = v[i];
+        }
+    }
+    
+    if (DEBUG_MODE && minValid == 999L) {
+        Serial.print(F("WARNING: Sensor timeout on pin "));
+        Serial.println(trig);
+    }
+    
+    return minValid;
 }
 
 /* -------------------------------------------
-   LEVEL %
-   Sensor top-down, empty=30cm, full=10cm
-   dist=30 -> 0%
-   dist=10 -> 100%
-   dist=20 -> 50%
-   Formula: (BIN_DEPTH_CM - dist) / USABLE_CM * 100
-   Clamped 0-100%
+   LEVEL % - separate formula per bin
+   BIO:    (95 - dist) / 85 * 100
+   NONBIO: (50 - dist) / 40 * 100
+   Both clamped 0-100%
    ------------------------------------------- */
-int levelPct(long dist)
+int bioPct()
 {
-    // clamp dist to valid range
-    long d = constrain(dist, (long)FULL_CM, (long)BIN_DEPTH_CM);
-    // filled = how much of the usable range is occupied
-    long filled = BIN_DEPTH_CM - d;
-    return (int)((filled * 100L) / USABLE_CM);
+    long d      = constrain(bioDist, (long)BIO_FULL_CM, (long)BIO_DEPTH_CM);
+    long filled = BIO_DEPTH_CM - d;
+    return (int)((filled * 100L) / BIO_USABLE_CM);
+}
+
+int nonPct()
+{
+    long d      = constrain(nonDist, (long)NON_FULL_CM, (long)NON_DEPTH_CM);
+    long filled = NON_DEPTH_CM - d;
+    return (int)((filled * 100L) / NON_USABLE_CM);
 }
 
 /* -------------------------------------------
-   LEVEL BAR: 8 segments e.g. [====    ]
+   LEVEL BAR: 8 segments from pct value
+   e.g. pct=50 -> [====    ]
    ------------------------------------------- */
-String levelBar(long dist)
+String levelBar(int pct)
 {
-    int pct  = levelPct(dist);
-    int segs = (pct * 8) / 100;    // accurate segment count
+    int segs = (pct * 8) / 100;
     String b = F("[");
     for (int i = 0; i < 8; i++) b += (i < segs ? '=' : ' ');
     b += ']';
@@ -163,6 +218,7 @@ void servoForceOpen(Servo &srv)
 
 /* -------------------------------------------
    ULTRASONIC: INTERVAL + HYSTERESIS + CONFIRM
+   Each bin uses its own thresholds
    ------------------------------------------- */
 void updateDistances()
 {
@@ -174,8 +230,8 @@ void updateDistances()
 
     // ---- BIO BIN ----
     if (!bioLocked) {
-        if (bioDist <= FULL_CM) { bioFullCnt++;  bioEmptyCnt = 0; }
-        else                    { bioFullCnt = 0; }
+        if (bioDist <= BIO_FULL_CM) { bioFullCnt++;  bioEmptyCnt = 0; }
+        else                        { bioFullCnt = 0; }
 
         if (bioFullCnt >= CONFIRM_NEEDED) {
             bioFullCnt = 0;
@@ -190,8 +246,8 @@ void updateDistances()
             if (DEBUG_MODE) Serial.println(F(">>> BIO LOCKED"));
         }
     } else {
-        if (bioDist >= EMPTY_CM) { bioEmptyCnt++;  bioFullCnt = 0; }
-        else                     { bioEmptyCnt = 0; }
+        if (bioDist >= BIO_EMPTY_CM) { bioEmptyCnt++;  bioFullCnt = 0; }
+        else                         { bioEmptyCnt = 0; }
 
         if (bioEmptyCnt >= CONFIRM_NEEDED) {
             bioEmptyCnt = 0;
@@ -206,8 +262,8 @@ void updateDistances()
 
     // ---- NON-BIO BIN ----
     if (!nonLocked) {
-        if (nonDist <= FULL_CM) { nonFullCnt++;  nonEmptyCnt = 0; }
-        else                    { nonFullCnt = 0; }
+        if (nonDist <= NON_FULL_CM) { nonFullCnt++;  nonEmptyCnt = 0; }
+        else                        { nonFullCnt = 0; }
 
         if (nonFullCnt >= CONFIRM_NEEDED) {
             nonFullCnt = 0;
@@ -222,8 +278,8 @@ void updateDistances()
             if (DEBUG_MODE) Serial.println(F(">>> NON-BIO LOCKED"));
         }
     } else {
-        if (nonDist >= EMPTY_CM) { nonEmptyCnt++;  nonFullCnt = 0; }
-        else                     { nonEmptyCnt = 0; }
+        if (nonDist >= NON_EMPTY_CM) { nonEmptyCnt++;  nonFullCnt = 0; }
+        else                         { nonEmptyCnt = 0; }
 
         if (nonEmptyCnt >= CONFIRM_NEEDED) {
             nonEmptyCnt = 0;
@@ -395,57 +451,94 @@ void updateLight()
 }
 
 /* -------------------------------------------
-   LCD LAYOUT (16x2)
-   Line 0:  "BIO  WASTE   XX%"
-   Line 1:  "[=======  ] 15cm"
+   LCD LAYOUT (16x2) - Alternating Display
+   Cycle 1: Line 0: "BIO          75%"
+            Line 1: "[======  ]  45cm"
+   Cycle 2: Line 0: "GPS: 10.31234"
+            Line 1: "     121.98765"
    ------------------------------------------- */
 void updateLCD()
 {
-    static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate < 500UL) return;
-    lastUpdate = millis();
-
-    int bioPct = levelPct(bioDist);
-    int nonPct = levelPct(nonDist);
-
-    // ---- BIO LCD (lcd1) ----
-    lcd1.setCursor(0, 0);
-    lcd1.print(F("BIO  WASTE  "));
-    if      (bioPct < 10)  lcd1.print(F("  "));
-    else if (bioPct < 100) lcd1.print(F(" "));
-    lcd1.print(bioPct);
-    lcd1.print('%');
-
-    lcd1.setCursor(0, 1);
-    lcd1.print(levelBar(bioDist));          // 10 chars: [========]
-    if (bioLocked) {
-        lcd1.print(F(" FULL "));
-    } else {
-        lcd1.print(F(" "));
-        if (bioDist < 10)       lcd1.print(F("  "));
-        else if (bioDist < 100) lcd1.print(F(" "));
-        lcd1.print(bioDist);
-        lcd1.print(F("cm"));
+    static unsigned long lastCycle = 0;
+    static bool showGPS = false;
+    
+    // Toggle between normal display and GPS every 3 seconds
+    if (millis() - lastCycle >= 3000UL) {
+        lastCycle = millis();
+        showGPS = !showGPS;
     }
 
-    // ---- NON-BIO LCD (lcd2) ----
-    lcd2.setCursor(0, 0);
-    lcd2.print(F("NON-BIO     "));
-    if      (nonPct < 10)  lcd2.print(F("  "));
-    else if (nonPct < 100) lcd2.print(F(" "));
-    lcd2.print(nonPct);
-    lcd2.print('%');
-
-    lcd2.setCursor(0, 1);
-    lcd2.print(levelBar(nonDist));
-    if (nonLocked) {
-        lcd2.print(F(" FULL "));
+    if (showGPS && gps.location.isValid()) {
+        // ---- SHOW GPS ON BOTH LCDs ----
+        String lat = String(gps.location.lat(), 5);
+        String lng = String(gps.location.lng(), 5);
+        
+        // BIO LCD - GPS
+        lcd1.clear();
+        lcd1.setCursor(0, 0);
+        lcd1.print(F("GPS:"));
+        lcd1.print(lat.substring(0, 11));
+        
+        lcd1.setCursor(0, 1);
+        lcd1.print(F("    "));
+        lcd1.print(lng.substring(0, 11));
+        
+        // NON-BIO LCD - GPS
+        lcd2.clear();
+        lcd2.setCursor(0, 0);
+        lcd2.print(F("GPS:"));
+        lcd2.print(lat.substring(0, 11));
+        
+        lcd2.setCursor(0, 1);
+        lcd2.print(F("    "));
+        lcd2.print(lng.substring(0, 11));
+        
     } else {
-        lcd2.print(F(" "));
-        if (nonDist < 10)       lcd2.print(F("  "));
-        else if (nonDist < 100) lcd2.print(F(" "));
-        lcd2.print(nonDist);
-        lcd2.print(F("cm"));
+        // ---- SHOW NORMAL BIN STATUS ----
+        int bp = bioPct();
+        int np = nonPct();
+
+        // ---- BIO LCD (lcd1) ----
+        lcd1.clear();
+        lcd1.setCursor(0, 0);
+        lcd1.print(F("BIO         "));  // Removed "WASTE"
+        if      (bp < 10)  lcd1.print(F("  "));
+        else if (bp < 100) lcd1.print(F(" "));
+        lcd1.print(bp);
+        lcd1.print('%');
+
+        lcd1.setCursor(0, 1);
+        lcd1.print(levelBar(bp));           // 10 chars [========]
+        if (bioLocked) {
+            lcd1.print(F(" FULL "));
+        } else {
+            lcd1.print(F(" "));
+            if      (bioDist < 10)  lcd1.print(F("  "));
+            else if (bioDist < 100) lcd1.print(F(" "));
+            lcd1.print(bioDist);
+            lcd1.print(F("cm"));
+        }
+
+        // ---- NON-BIO LCD (lcd2) ----
+        lcd2.clear();
+        lcd2.setCursor(0, 0);
+        lcd2.print(F("NON-BIO     "));
+        if      (np < 10)  lcd2.print(F("  "));
+        else if (np < 100) lcd2.print(F(" "));
+        lcd2.print(np);
+        lcd2.print('%');
+
+        lcd2.setCursor(0, 1);
+        lcd2.print(levelBar(np));
+        if (nonLocked) {
+            lcd2.print(F(" FULL "));
+        } else {
+            lcd2.print(F(" "));
+            if      (nonDist < 10)  lcd2.print(F("  "));
+            else if (nonDist < 100) lcd2.print(F(" "));
+            lcd2.print(nonDist);
+            lcd2.print(F("cm"));
+        }
     }
 }
 
@@ -477,7 +570,7 @@ void setup()
     pinMode(PIN_TRIG_BIO,  OUTPUT); pinMode(PIN_ECHO_BIO, INPUT);
     pinMode(PIN_TRIG_NON,  OUTPUT); pinMode(PIN_ECHO_NON, INPUT);
 
-    // Boot: LOCKED(90) first then OPEN(0) for guaranteed movement
+    // Boot: LOCKED(90) then OPEN(0) for guaranteed physical movement
     servoBio.attach(PIN_SERVO_BIO);
     servoBio.write(SERVO_LOCKED);   delay(800);
     servoBio.write(SERVO_UNLOCKED); delay(800);
@@ -513,10 +606,12 @@ void setup()
         Serial.println(F("==========================="));
         Serial.println(F("   SMART BIN v3.1 READY"));
         Serial.println(F("==========================="));
-        Serial.print(F("Empty = ")); Serial.print(BIN_DEPTH_CM); Serial.println(F("cm (0%)"));
-        Serial.print(F("Full  = ")); Serial.print(FULL_CM);      Serial.println(F("cm (100%)"));
-        Serial.print(F("Unlock>= ")); Serial.print(EMPTY_CM);    Serial.println(F("cm"));
-        Serial.print(F("Usable: ")); Serial.print(USABLE_CM);    Serial.println(F("cm range"));
+        Serial.print(F("BIO    empty=")); Serial.print(BIO_DEPTH_CM);
+        Serial.print(F("cm  full=")); Serial.print(BIO_FULL_CM);
+        Serial.print(F("cm  usable=")); Serial.print(BIO_USABLE_CM); Serial.println(F("cm"));
+        Serial.print(F("NONBIO empty=")); Serial.print(NON_DEPTH_CM);
+        Serial.print(F("cm  full=")); Serial.print(NON_FULL_CM);
+        Serial.print(F("cm  usable=")); Serial.print(NON_USABLE_CM); Serial.println(F("cm"));
         Serial.print(F("Confirm: ")); Serial.print(CONFIRM_NEEDED); Serial.println(F("x reads"));
         Serial.print(F("Interval: ")); Serial.print(US_INTERVAL_MS / 1000); Serial.println(F("s"));
         Serial.println(F("==========================="));
@@ -546,11 +641,11 @@ void loop()
         lastDbg = millis();
         Serial.print(F("BIO "));
         Serial.print(bioDist); Serial.print(F("cm "));
-        Serial.print(levelPct(bioDist)); Serial.print(F("% "));
+        Serial.print(bioPct()); Serial.print(F("% "));
         Serial.print(bioLocked ? F("LOCKED") : F("open"));
         Serial.print(F("  | NON-BIO "));
         Serial.print(nonDist); Serial.print(F("cm "));
-        Serial.print(levelPct(nonDist)); Serial.print(F("% "));
+        Serial.print(nonPct()); Serial.print(F("% "));
         Serial.println(nonLocked ? F("LOCKED") : F("open"));
         Serial.print(F("Bio SMS today: ")); Serial.print(bioSMSCount);
         Serial.print(F("  Non SMS today: ")); Serial.println(nonSMSCount);

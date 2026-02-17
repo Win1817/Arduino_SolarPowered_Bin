@@ -5,9 +5,9 @@
  * SMART WASTE BIN SYSTEM v3.1
  * Header - config, pins, externs
  *
- * Sensor mounted TOP-DOWN from lid
- * Empty = 30cm (sensor to bin bottom)
- * Full  = 10cm (trash close to sensor)
+ * Sensor: top-down lid mount
+ * BIO    empty = ~95cm, full = <=10cm
+ * NONBIO empty = ~50cm, full = <=10cm
  */
 
 #include <Arduino.h>
@@ -21,18 +21,31 @@
 #include <MFRC522.h>
 
 /* -------------------------------------------
-   CONFIG
+   BIO BIN CALIBRATION
+   Empty reading:  95cm
+   Full  reading:  10cm  (trash close to lid)
+   Unlock thresh:  20cm  (hysteresis)
+   ------------------------------------------- */
+#define BIO_DEPTH_CM        95
+#define BIO_FULL_CM         10
+#define BIO_EMPTY_CM        20
+#define BIO_USABLE_CM       (BIO_DEPTH_CM - BIO_FULL_CM)
+
+/* -------------------------------------------
+   NON-BIO BIN CALIBRATION
+   Empty reading:  50cm
+   Full  reading:  10cm  (trash close to lid)
+   Unlock thresh:  20cm  (hysteresis)
+   ------------------------------------------- */
+#define NON_DEPTH_CM        50
+#define NON_FULL_CM         10
+#define NON_EMPTY_CM        20
+#define NON_USABLE_CM       (NON_DEPTH_CM - NON_FULL_CM)
+
+/* -------------------------------------------
+   GENERAL CONFIG
    ------------------------------------------- */
 #define DEBUG_MODE          true
-
-// Sensor reads 30cm when empty, 10cm when full
-#define BIN_DEPTH_CM        30      // distance when bin is empty
-#define FULL_CM             10      // <= this -> FULL (lock)
-#define EMPTY_CM            15      // >= this -> EMPTY again (hysteresis)
-
-// Level % formula: (30 - dist) / (30 - 10) * 100
-// dist=30 -> 0%,  dist=10 -> 100%
-#define USABLE_CM           (BIN_DEPTH_CM - FULL_CM)   // 20cm usable range
 
 #define US_INTERVAL_MS      3000UL
 #define CONFIRM_NEEDED      3
@@ -77,7 +90,7 @@ static const char AUTH_UID2[] = "F3 37 B3 39";
 /* -------------------------------------------
    PHONE NUMBER
    ------------------------------------------- */
-static const char PHONE[] = "+639567669410";
+static const char PHONE[] = "+639618898492";
 
 /* -------------------------------------------
    HARDWARE OBJECT DECLARATIONS
@@ -126,8 +139,9 @@ void    sendSMS(const char* msg);
 String  gpsStr();
 int     getSignal();
 long    readDist(uint8_t trig, uint8_t echo);
-int     levelPct(long dist);
-String  levelBar(long dist);
+int     bioPct();
+int     nonPct();
+String  levelBar(int pct);
 void    servoForceOpen(Servo &srv);
 
 void    updateDistances();
