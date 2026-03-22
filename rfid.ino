@@ -1,45 +1,55 @@
-#include <SPI.h>
-#include <MFRC522.h>
+#!/usr/bin/env python3
+“””
+Simple Relay Control - Minimal Enhancement Version
+Same behavior as original with basic error handling
+“””
 
-#define SS_PIN  10    // SDA / SS pin
-#define RST_PIN 9     // Reset pin
+from gpiozero import OutputDevice
+from time import sleep
 
-MFRC522 rfid(SS_PIN, RST_PIN);  // Create MFRC522 instance
+# Configuration
 
-void setup() {
-  Serial.begin(9600);           // Initialize serial communications
-  while (!Serial);              // Wait for serial (good for some boards)
-  
-  SPI.begin();                  // Init SPI bus
-  rfid.PCD_Init();              // Init MFRC522
-  
-  Serial.println("Tap an RFID card/tag to read its UID...");
-  Serial.println("Approach with card →");
-}
+RELAY_PIN = 17
 
-void loop() {
-  // Look for new cards
-  if (!rfid.PICC_IsNewCardPresent()) {
-    return;
-  }
+def main():
+relay = None
 
-  // Select one of the cards
-  if (!rfid.PICC_ReadCardSerial()) {
-    return;
-  }
+```
+try:
+    # Initialize relay
+    relay = OutputDevice(RELAY_PIN, active_high=True, initial_value=False)
+    print("Relay initialized")
+    
+    # Sequence
+    print("OFF - 1s")
+    relay.off()
+    sleep(1)
+    
+    print("ON - 5s")
+    relay.on()
+    sleep(5)
+    
+    print("OFF - 2s")
+    relay.off()
+    sleep(2)
+    
+    print("ON - 5s")
+    relay.on()
+    sleep(5)
+    
+    print("OFF - Final")
+    relay.off()
+    
+    print("Sequence complete")
+    
+except Exception as e:
+    print(f"Error: {e}")
 
-  // Show UID on serial monitor
-  Serial.print("Card UID: ");
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
-    Serial.print(rfid.uid.uidByte[i], HEX);
-  }
-  Serial.println();
+finally:
+    if relay:
+        relay.close()
+        print("Relay closed")
+```
 
-  // Halt PICC (stop reading)
-  rfid.PICC_HaltA();
-  // Stop encryption on PCD
-  rfid.PCD_StopCrypto1();
-
-  delay(1000);  // Small delay to avoid multiple reads
-}
+if **name** == “**main**”:
+main()
